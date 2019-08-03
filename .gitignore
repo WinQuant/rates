@@ -1,0 +1,7 @@
+*.o
+*.swp
+rates_pricing.app
+lib
+
+# office files
+~$*
