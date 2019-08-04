@@ -23,7 +23,7 @@
 #include "widgets/optionality.h"
 #include "widgets/modelInfo.h"
 
-QWidget *buildPricingPanel(QWidget *parent) {
+QWidget *buildPricingPanel(QWidget *parent, RatesMainWindow *window) {
     QScrollArea *scroll = new QScrollArea(parent);
 
     QWidget *panel = new QWidget(scroll);
@@ -54,6 +54,17 @@ QWidget *buildPricingPanel(QWidget *parent) {
     modelInfoLabel->setStyleSheet("font-weight: bold");
     ModelInfo *modelInfo = new ModelInfo();
 
+    // pass-in model
+    window->setDealInfoWidget(dealInfo);
+    window->setFixedLegSpecWidget(fixedLeg);
+    window->setFloatLegSpecWidget(floatLeg);
+    window->setOptionalityWidget(optionality);
+    window->setModelInfoWidget(modelInfo);
+
+    QPushButton *calcButton = new QPushButton(QString::fromUtf8("计算"));
+    // trigger for calculation
+    window->connect(calcButton, SIGNAL(clicked()), window, SLOT(calculate()));
+
     layout->addWidget(dealInfoLabel);
     layout->addWidget(dealInfo);
 
@@ -68,6 +79,8 @@ QWidget *buildPricingPanel(QWidget *parent) {
 
     layout->addWidget(modelInfoLabel);
     layout->addWidget(modelInfo);
+
+    layout->addWidget(calcButton);
 
     panel->setLayout(layout);
 
@@ -106,10 +119,10 @@ int main(int argc, char *argv[]) {
     QWidget *centralWidget = new QWidget(window);
     QTabWidget *tabs = new QTabWidget(centralWidget);
 
-    QWidget *pricingPanel = buildPricingPanel(tabs);
+    QWidget *pricingPanel = buildPricingPanel(tabs, window);
     QTableWidget *marketPanel  = buildMarketPanel(tabs);
 
-    tabs->setFixedSize(640, 710);
+    tabs->setFixedSize(640, 720);
     tabs->addTab(pricingPanel, "Pricing");
     tabs->addTab(marketPanel,  "Market Volatility");
 

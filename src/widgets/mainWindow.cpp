@@ -137,3 +137,27 @@ void RatesMainWindow::updateVolTable() {
         }
     }
 }
+
+void RatesMainWindow::setDealInfoWidget(DealInfo *dealInfo) {
+    dealInfo_ = dealInfo;
+}
+
+void RatesMainWindow::setFixedLegSpecWidget(FixedLegSpec *fixedLegSpec) {
+    fixedLegSpec_ = fixedLegSpec;
+}
+
+void RatesMainWindow::setFloatLegSpecWidget(FloatLegSpec *floatLegSpec) {
+    floatLegSpec_ = floatLegSpec;
+}
+
+void RatesMainWindow::setOptionalityWidget(Optionality *optionality) {
+    optionality_ = optionality;
+}
+
+void RatesMainWindow::setModelInfoWidget(ModelInfo *modelInfo) {
+    modelInfo_ = modelInfo;
+}
+
+void RatesMainWindow::calculate() {
+    std::cout << "In calculating..." << std::endl;
+}
