@@ -61,3 +61,8 @@ QString ModelInfo::model() {
 QString ModelInfo::engine() {
     return engine_->currentText();
 }
+
+void ModelInfo::setPrice(double price) {
+    pricePerc_->setText(QString::number(price / 1000000));
+    price_->setText(QString::number(price));
+}

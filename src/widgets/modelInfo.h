@@ -18,6 +18,8 @@ public:
 
     QString model();
     QString engine();
+
+    void setPrice(double price);
 private:
     // set of labels
     QLabel *labelModel_;

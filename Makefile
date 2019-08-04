@@ -16,7 +16,7 @@ CXXFLAGS      = -pipe -O2 -arch x86_64 -Xarch_x86_64 -mmacosx-version-min=10.14 
 INCPATH       = -I../../../../anaconda/mkspecs/macx-g++ -I. -I../../../../anaconda/include/QtCore -I../../../../anaconda/include/QtGui -I../../../../anaconda/include -I. -Isrc -Iinclude
 LINK          = g++
 LFLAGS        = -headerpad_max_install_names -arch x86_64 -Xarch_x86_64 -mmacosx-version-min=10.14 -Xlinker -rpath -Xlinker lib
-LIBS          = $(SUBLIBS)  -L/Users/qiushuang/anaconda/lib -lQtGui -L/Users/qiushuang/anaconda/lib -Llib -lQtCore -lOpenXLSX
+LIBS          = $(SUBLIBS)  -L/Users/qiushuang/anaconda/lib -lQtGui -L/Users/qiushuang/anaconda/lib -Llib -lQtCore -lOpenXLSX -lQuantLib
 AR            = ar cq
 RANLIB        = ranlib -s
 QMAKE         = /Users/qiushuang/anaconda/bin/qmake
@@ -50,14 +50,16 @@ SOURCES       = src/main.cpp \
 		src/widgets/floatLegSpec.cpp \
 		src/widgets/optionality.cpp \
 		src/widgets/modelInfo.cpp \
-		src/widgets/mainWindow.cpp 
+		src/widgets/mainWindow.cpp \
+		src/model/bermudanSwaption.cpp
 OBJECTS       = main.o \
 		dealInfo.o \
 		fixedLegSpec.o \
 		floatLegSpec.o \
 		optionality.o \
 		modelInfo.o \
-		mainWindow.o
+		mainWindow.o \
+		bermudanSwaption.o
 DIST          = ../../../../anaconda/mkspecs/common/unix.conf \
 		../../../../anaconda/mkspecs/common/mac.conf \
 		../../../../anaconda/mkspecs/common/gcc-base.conf \
@@ -265,7 +267,8 @@ main.o: src/main.cpp src/widgets/mainWindow.h \
 		src/widgets/fixedLegSpec.h \
 		src/widgets/floatLegSpec.h \
 		src/widgets/optionality.h \
-		src/widgets/modelInfo.h
+		src/widgets/modelInfo.h \
+		src/model/bermudanSwaption.h
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o main.o src/main.cpp
 
 dealInfo.o: src/widgets/dealInfo.cpp src/widgets/dealInfo.h
@@ -285,6 +288,9 @@ modelInfo.o: src/widgets/modelInfo.cpp src/widgets/modelInfo.h
 
 mainWindow.o: src/widgets/mainWindow.cpp src/widgets/mainWindow.h
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o mainWindow.o src/widgets/mainWindow.cpp
+
+bermudanSwaption.o: src/model/bermudanSwaption.cpp src/model/bermudanSwaption.h
+	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o bermudanSwaption.o src/model/bermudanSwaption.cpp
 
 ####### Install
 

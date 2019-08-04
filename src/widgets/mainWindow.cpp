@@ -8,6 +8,7 @@
 #include <OpenXLSX/OpenXLSX.h>
 
 #include "widgets/mainWindow.h"
+#include "model/bermudanSwaption.h"
 
 #include <iostream>
 
@@ -160,4 +161,7 @@ void RatesMainWindow::setModelInfoWidget(ModelInfo *modelInfo) {
 
 void RatesMainWindow::calculate() {
     std::cout << "In calculating..." << std::endl;
+    double price = 240000.0; // priceSwaption();
+    std::cout << price << std::endl;
+    modelInfo_->setPrice(price);
 }
