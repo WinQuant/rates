@@ -124,7 +124,6 @@ ext::shared_ptr<Exercise> getQuantLibOptionExercise(QString style,
             ext::shared_ptr<Coupon> coupon =
                     ext::dynamic_pointer_cast<Coupon>(bbgLeg[i]);
             bbgBermudanDates.push_back(coupon->accrualStartDate());
-            std::cout << coupon->accrualStartDate() << std::endl;
         }
 
         return ext::shared_ptr<Exercise>(
@@ -405,8 +404,6 @@ double priceSwaption(double notional,
                            floatLegConvention, floatLegConvention,
                            DateGeneration::Forward, false);
 
-    std::cout << fixedLegDayCounter << std::endl;
-    std::cout << bbgIndex3M->dayCounter() << std::endl;
     ext::shared_ptr<VanillaSwap> swap(new VanillaSwap(
         type, notional,
         fixedSchedule, fixedRate, fixedLegDayCounter,
@@ -422,7 +419,6 @@ double priceSwaption(double notional,
                 swap, startDate);
     Swaption swaption(swap, exercise);
 
-    std::cout << "Before build pricing model" << std::endl;
     // pricing with generalized hull white for piece-wise term structure fit
     ext::shared_ptr<GeneralizedHullWhite> piecewiseHw = getQuantLibModel(model, bbgFwdCurve);
     ext::shared_ptr<PricingEngine> pricingEngine = getQuantLibPricingEngine(engine, piecewiseHw, bbgDiscountingCurve);
