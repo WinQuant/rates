@@ -22,7 +22,6 @@ Optionality::Optionality() : QWidget() {
     // supported style
     style_->addItem(QString::fromUtf8("欧式期权(European)"));
     style_->addItem(QString::fromUtf8("百慕大期权(Bermudan)"));
-    style_->addItem(QString::fromUtf8("美式期权(American)"));
 
     // support position
     position_->addItem(QString::fromUtf8("多头(Long)"));

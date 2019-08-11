@@ -16,11 +16,11 @@ FixedLegSpec::FixedLegSpec() : QWidget() {
     dayCounter_ = new QComboBox();
 
     // supported direction
-    direction_->addItem(QString::fromUtf8("收款(Pay)"));
-    direction_->addItem(QString::fromUtf8("付款(Receive)"));
+    direction_->addItem(QString::fromUtf8("收款(Receive)"));
+    direction_->addItem(QString::fromUtf8("付款(Pay)"));
 
     // default coupon
-    coupon_->setText("2.00%");
+    coupon_->setText("0.02");
 
     // supported pay freq
     payFreq_->addItem(QString::fromUtf8("季度支付(Quarter)"));

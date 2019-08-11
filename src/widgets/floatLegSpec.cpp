@@ -20,8 +20,8 @@ FloatLegSpec::FloatLegSpec() : QWidget() {
     dayCounter_ = new QComboBox();
 
     // supported direction
-    direction_->addItem(QString::fromUtf8("收款(Pay)"));
-    direction_->addItem(QString::fromUtf8("付款(Receive)"));
+    direction_->addItem(QString::fromUtf8("付款(Pay)"));
+    direction_->addItem(QString::fromUtf8("收款(Receive)"));
 
     // default index
     index_->addItem("US0003M");

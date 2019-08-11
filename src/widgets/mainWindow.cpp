@@ -161,7 +161,41 @@ void RatesMainWindow::setModelInfoWidget(ModelInfo *modelInfo) {
 
 void RatesMainWindow::calculate() {
     std::cout << "In calculating..." << std::endl;
-    double price = 240000.0; // priceSwaption();
+    // collect necessary parameters
+    // deal related parameters
+    double notional = dealInfo_->notional().toDouble();
+    QString currency = dealInfo_->currency();
+    std::string effectiveDate = dealInfo_->effectiveDate().toString(QString::fromUtf8("yyyy/MM/dd")).toUtf8().constData();
+    std::string maturityDate  = dealInfo_->maturityDate().toString(QString::fromUtf8("yyyy/MM/dd")).toUtf8().constData();
+
+    // fix leg related information
+    QString fixedDirection = fixedLegSpec_->direction();
+    double fixedCoupon = fixedLegSpec_->coupon().toDouble();
+    QString fixedPayFreq = fixedLegSpec_->payFreq();
+    std::string fixedDayCounter = fixedLegSpec_->dayCounter().toUtf8().constData();
+
+    // float leg related information
+    QString floatDirection = floatLegSpec_->direction();
+    QString floatIndex = floatLegSpec_->index();
+    QString floatPayFreq = floatLegSpec_->payFreq();
+    std::string floatDayCounter = floatLegSpec_->dayCounter().toUtf8().constData();
+
+    // optionality
+    QString style = optionality_->style();
+    QString position = optionality_->position();
+    QString callFreq = optionality_->callFreq();
+
+    // model
+    std::string pricingDate = modelInfo_->pricingDate().toString(QString::fromUtf8("yyyy/MM/dd")).toUtf8().constData();
+    QString model = modelInfo_->model();
+    QString engine = modelInfo_->engine();
+
+    double price = priceSwaption(notional,
+            currency, effectiveDate, maturityDate,
+            fixedDirection, fixedCoupon, fixedPayFreq, fixedDayCounter,
+            floatDirection, floatIndex, floatPayFreq, floatDayCounter,
+            style, position, callFreq,
+            pricingDate, model, engine);
     std::cout << price << std::endl;
     modelInfo_->setPrice(price);
 }
