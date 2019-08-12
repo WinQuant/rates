@@ -22,7 +22,7 @@ public:
     QString model();
     QString engine();
 
-    void setPrice(double price);
+    void setPrice(double returnRate, double price);
 private:
     // set of labels
     QLabel *labelToday_;

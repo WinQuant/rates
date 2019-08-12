@@ -23,6 +23,9 @@
 #include "widgets/optionality.h"
 #include "widgets/modelInfo.h"
 
+#define WINDOW_HEIGHT 720
+#define WINDOW_WIDTH  640
+
 QWidget *buildPricingPanel(QWidget *parent, RatesMainWindow *window) {
     QScrollArea *scroll = new QScrollArea(parent);
 
@@ -62,6 +65,7 @@ QWidget *buildPricingPanel(QWidget *parent, RatesMainWindow *window) {
     window->setModelInfoWidget(modelInfo);
 
     QPushButton *calcButton = new QPushButton(QString::fromUtf8("计算"));
+    calcButton->setMaximumWidth( WINDOW_WIDTH / 5 );
     // trigger for calculation
     window->connect(calcButton, SIGNAL(clicked()), window, SLOT(calculate()));
 
@@ -111,7 +115,7 @@ int main(int argc, char *argv[]) {
 
     RatesMainWindow *window = new RatesMainWindow();
     window->setWindowTitle(QString::fromUtf8("Swaption Pricing"));
-    window->resize(640, 720);
+    window->resize(WINDOW_WIDTH, WINDOW_HEIGHT);
 
     // window menu
     window->setupMenu();
@@ -122,7 +126,7 @@ int main(int argc, char *argv[]) {
     QWidget *pricingPanel = buildPricingPanel(tabs, window);
     QTableWidget *marketPanel  = buildMarketPanel(tabs);
 
-    tabs->setFixedSize(640, 720);
+    tabs->setFixedSize(WINDOW_WIDTH, WINDOW_HEIGHT);
     tabs->addTab(pricingPanel, "Pricing");
     tabs->addTab(marketPanel,  "Market Volatility");
 

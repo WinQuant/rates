@@ -2,6 +2,8 @@
  * Model info.
  */
 
+#include <QLocale>
+
 #include "widgets/modelInfo.h"
 
 ModelInfo::ModelInfo() : QWidget() {
@@ -77,7 +79,8 @@ QString ModelInfo::engine() {
     return engine_->currentText();
 }
 
-void ModelInfo::setPrice(double price) {
-    pricePerc_->setText(QString::number(price / 1000000));
-    price_->setText(QString::number(price));
+void ModelInfo::setPrice(double returnRate, double price) {
+    QLocale cLocale = QLocale::c();
+    pricePerc_->setText(cLocale.toString(returnRate, 'f', 3));
+    price_->setText(cLocale.toString(price, 'f', 2));
 }

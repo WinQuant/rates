@@ -196,6 +196,5 @@ void RatesMainWindow::calculate() {
             floatDirection, floatIndex, floatPayFreq, floatDayCounter,
             style, position, callFreq,
             pricingDate, model, engine);
-    std::cout << price << std::endl;
-    modelInfo_->setPrice(price);
+    modelInfo_->setPrice(price / notional, price);
 }
