@@ -189,12 +189,14 @@ void RatesMainWindow::calculate() {
     std::string pricingDate = modelInfo_->pricingDate().toString(QString::fromUtf8("yyyy/MM/dd")).toUtf8().constData();
     QString model = modelInfo_->model();
     QString engine = modelInfo_->engine();
+    QString complexity = modelInfo_->complexity();
+    QString curve = modelInfo_->curve();
 
     double price = priceSwaption(notional,
             currency, effectiveDate, maturityDate,
             fixedDirection, fixedCoupon, fixedPayFreq, fixedDayCounter,
             floatDirection, floatIndex, floatPayFreq, floatDayCounter,
             style, position, callFreq,
-            pricingDate, model, engine);
+            pricingDate, model, engine, complexity, curve);
     modelInfo_->setPrice(price / notional, price);
 }

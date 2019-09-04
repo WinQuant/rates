@@ -21,6 +21,8 @@ public:
     QDate pricingDate();
     QString model();
     QString engine();
+    QString complexity();
+    QString curve();
 
     void setPrice(double returnRate, double price);
 private:
@@ -28,12 +30,16 @@ private:
     QLabel *labelToday_;
     QLabel *labelModel_;
     QLabel *labelEngine_;
+    QLabel *labelComplexity_;
+    QLabel *labelCurves_;
     QLabel *labelPricePerc_;
     QLabel *labelPrice_;
 
     QDateEdit *today_;
     QComboBox *model_;
     QComboBox *engine_;
+    QComboBox *complexity_;
+    QComboBox *curves_;
     QLabel *pricePerc_;
     QLabel *price_;
 

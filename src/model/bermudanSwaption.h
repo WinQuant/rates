@@ -14,6 +14,7 @@ double priceSwaption(double notional,
         QString fixedDirection, double fixedCoupon, QString fixedPayFreq, std::string fixedDayCounter,
         QString floatDirection, QString floatIndex, QString floatPayFreq, std::string floatDayCounter,
         QString style, QString position, QString callFreq,
-        std::string today, QString model, QString engine);
+        std::string today, QString model, QString engine,
+        QString complexity, QString curve);
 
 #endif

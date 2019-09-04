@@ -1,33 +1,38 @@
 /* Reproduce the BBG deal */
 
 #include <ql/qldefines.hpp>
-#include <ql/instruments/swaption.hpp>
-#include <ql/pricingengines/swap/discountingswapengine.hpp>
-#include <ql/pricingengines/swaption/fdhullwhiteswaptionengine.hpp>
-#include <ql/pricingengines/swaption/treeswaptionengine.hpp>
-#include <ql/pricingengines/swaption/jamshidianswaptionengine.hpp>
-#include <ql/math/array.hpp>
+#include <ql/quotes/simplequote.hpp>
+#include <ql/indexes/ibor/fedfunds.hpp>
+#include <ql/indexes/ibor/usdlibor.hpp>
+#include <ql/instruments/swap.hpp>
+#include <ql/instruments/vanillaswap.hpp>
+#include <ql/termstructures/yield/oisratehelper.hpp>
+#include <ql/termstructures/yield/piecewiseyieldcurve.hpp>
+#include <ql/termstructures/yield/zeroyieldstructure.hpp>
+#include <ql/time/calendars/target.hpp>
+#include <ql/time/daycounters/actualactual.hpp>
+#include <ql/time/daycounters/actual360.hpp>
+#include <ql/time/daycounters/thirty360.hpp>
+#include <ql/time/schedule.hpp>
 #include <ql/math/interpolations/forwardflatinterpolation.hpp>
 #include <ql/math/interpolations/linearinterpolation.hpp>
-#include <ql/math/interpolations/cubicinterpolation.hpp>
-#include <ql/math/solvers1d/bisection.hpp>
+#include <ql/pricingengines/swap/discountingswapengine.hpp>
+
+#include <ql/instruments/swaption.hpp>
+#include <ql/pricingengines/swaption/fdhullwhiteswaptionengine.hpp>
+#include <ql/pricingengines/swaption/treeswaptionengine.hpp>
 #include <ql/models/shortrate/calibrationhelpers/swaptionhelper.hpp>
-#include <ql/indexes/ibor/libor.hpp>
-#include <ql/currencies/america.hpp>
+#include <ql/math/array.hpp>
+#include <ql/math/optimization/levenbergmarquardt.hpp>
+#include <ql/math/solvers1d/bisection.hpp>
+#include <ql/math/solvers1d/ridder.hpp>
 
 #include <ql/cashflows/coupon.hpp>
-#include <ql/quotes/simplequote.hpp>
-#include <ql/termstructures/yield/zerocurve.hpp>
-#include <ql/termstructures/yield/forwardcurve.hpp>
-#include <ql/termstructures/yield/discountcurve.hpp>
 #include <ql/time/calendars/target.hpp>
-#include <ql/time/daycounters/thirty360.hpp>
-#include <ql/time/daycounters/actual360.hpp>
-#include <ql/time/daycounters/actualactual.hpp>
-#include <ql/utilities/dataparsers.hpp>
 
 #include <ql/experimental/shortrate/generalizedhullwhite.hpp>
 
+#include <vector>
 #include <iostream>
 #include <iomanip>
 
@@ -40,7 +45,6 @@ namespace QuantLib {
     Integer sessionId() { return 0; }
 }
 #endif
-
 
 Date ghwDates[] = { Date(16, July,    2019),
                     Date(16, August,  2019),
@@ -56,6 +60,91 @@ Real ghwVols[] = { 0.0061, 0.0066, 0.0066,
                    0.0084, 0.0080, 0.0085,
                    0.0062, 0.0065, 0.0123,
                    0.00001 };
+
+Period maturities[] = {
+    Period( 1, Months ), Period( 3, Months ), Period( 6, Months ),
+    Period( 9, Months ), Period( 1, Years ),  Period( 2, Years ),
+    Period( 3, Years ),  Period( 4, Years ),  Period( 5, Years ),
+    Period( 6, Years ) };
+
+Period lengths[] = {
+    Period( 6, Years ), Period( 6, Years ), Period( 5, Years ),
+    Period( 5, Years ), Period( 5, Years ), Period( 4, Years ),
+    Period( 3, Years ), Period( 2, Years ), Period( 1, Years ),
+    Period( 1, Years ) };
+
+// dual curve ois discounting
+double oisDiscountingVols[] = {
+    0.3619, 0.3558, 0.3665,
+    0.3634, 0.3588, 0.3528,
+    0.3408, 0.3312, 0.3219,
+    0.3063 };
+
+double liborDiscountingVols[] = {
+    0.3654, 0.3594, 0.3700,
+    0.3671, 0.3627, 0.3572,
+    0.3454, 0.3361, 0.3265,
+    0.3115 };
+
+// forecast forward rate
+double oisRates[] = {
+    2.4100, 2.3879, 2.3885, 2.2890,
+    2.2140, 2.1530, 2.0760, 2.0210, 1.9770, 1.9310, 1.8420, 1.7790,
+    1.6760, 1.6200, 1.5820, 1.5840, 1.6040, 1.9211, 2.0390, 2.1035,
+    2.1717, 2.2360, 2.2591, 2.2665, 2.2498, 2.2188 };
+
+Period depositTenor(3, Months);
+double depositRate = 0.0229963;
+
+Date futuresMats[] = {
+    Date(18, September, 2019), Date(18, December, 2019),
+    Date(18, March, 2020),     Date(17, June, 2020),
+    Date(16, September, 2020), Date(16, December, 2020) };
+
+double futuresPrices[] = {
+    97.92, 97.99, 98.17, 98.255, 98.315, 98.305 };
+
+Period swapTenors[] = {
+    Period( 2, Years ),  Period( 3, Years ),  Period( 4, Years ),
+    Period( 5, Years ),  Period( 6, Years ),  Period( 7, Years ),
+    Period( 8, Years ),  Period( 9, Years ),  Period( 10, Years ),
+    Period( 11, Years ), Period( 12, Years ), Period( 15, Years ),
+    Period( 20, Years ), Period( 25, Years ), Period( 30, Years ),
+    Period( 40, Years ), Period( 50, Years ) };
+
+double swapQuotes[] = {
+    0.018799, 0.018327, 0.018291, 0.018500, 0.018840, 0.019211,
+    0.019608, 0.020005, 0.020390, 0.020730, 0.021035, 0.021717,
+    0.022360, 0.022591, 0.022665, 0.022498, 0.022188 };
+
+void bbgCalibrateModel(
+          const double *bsImpliedVols,
+          const ext::shared_ptr<ShortRateModel>& model,
+          const std::vector<ext::shared_ptr<BlackCalibrationHelper> >& helpers,
+          const std::vector<bool>& fixParameters=std::vector<bool>()) {
+    LevenbergMarquardt om;
+    model->calibrate(helpers, om,
+                     EndCriteria(400, 100, 1.0e-8, 1.0e-8, 1.0e-8),
+                     Constraint(), std::vector<Real>(), fixParameters);
+
+    // Output the implied Black volatilities
+    for (Size i=0; i<helpers.size(); i++) {
+        Real npv = helpers[i]->modelValue();
+        Volatility implied = helpers[i]->impliedVolatility(npv, 1e-4,
+                1000, 0.00, 1.00);
+        Volatility diff = implied - bsImpliedVols[i];
+
+        std::cout << bbgCalibrateMaturities[i] << "x"
+                  << bbgCalibrateTenors[i] << "Y"
+                  << std::setprecision(5) << std::noshowpos
+                  << ": model " << std::setw(7) << io::volatility(implied)
+                  << ", market " << std::setw(7)
+                  << io::volatility(bsImpliedVols[i])
+                  << " (" << std::setw(7) << std::showpos
+                  << io::volatility(diff) << std::noshowpos << ")\n";
+    }
+}
+
 ext::shared_ptr<GeneralizedHullWhite> makeGhw(
             const Handle<YieldTermStructure> &yt, Real speed) {
     std::vector<Date> vd = std::vector<Date>(std::begin(ghwDates),
@@ -112,23 +201,32 @@ IborIndex *getQuantLibIndex(QString floatIndex,
                         USDCurrency(), calendar, Actual360(), fwdCurve);
 }
 
+bool isDualCurve(QString curve) {
+    return curve == QString::fromUtf8("双重曲线");
+}
+
+bool isConstantModel(QString complexity) {
+    return complexity == QString::fromUtf8("常函数");
+}
+
 ext::shared_ptr<Exercise> getQuantLibOptionExercise(QString style,
             ext::shared_ptr<VanillaSwap> swap, Date startDate){
-    if (style == QString::fromUtf8("百慕大期权(Bermudan)")) {
-        // Bermudan swaption
-        // construct coupon dates
-        std::vector<Date> bbgBermudanDates;
-        const std::vector<ext::shared_ptr<CashFlow> >& bbgLeg =
-                swap->floatingLeg();
-        for (Size i=0; i<bbgLeg.size(); i++) {
-            ext::shared_ptr<Coupon> coupon =
-                    ext::dynamic_pointer_cast<Coupon>(bbgLeg[i]);
-            bbgBermudanDates.push_back(coupon->accrualStartDate());
-        }
+    // Bermudan swaption
+    // construct coupon dates
+    std::vector<Date> bbgBermudanDates;
+    const std::vector<ext::shared_ptr<CashFlow> >& bbgLeg =
+            swap->fixedLeg();
+    for (Size i=0; i<bbgLeg.size(); i++) {
+        ext::shared_ptr<Coupon> coupon =
+                ext::dynamic_pointer_cast<Coupon>(bbgLeg[i]);
+        bbgBermudanDates.push_back(coupon->accrualStartDate());
+    }
 
+    if (style == QString::fromUtf8("百慕大期权(Bermudan)")) {
         return ext::shared_ptr<Exercise>(
                          new BermudanExercise(bbgBermudanDates));
     } else if (style == QString::fromUtf8("欧式期权(European)")) {
+        // European option expires on the last day
         return ext::shared_ptr<Exercise>(
                     new EuropeanExercise(startDate));
     }
@@ -151,124 +249,7 @@ ext::shared_ptr<PricingEngine> getQuantLibPricingEngine(QString engine,
                 new TreeSwaptionEngine(model, 500, discountCurve));
 }
 
-ext::shared_ptr<YieldTermStructure> makeForwardCurve() {
-    // forward curve
-    Date forwardDates[] = { Date( 15, July, 2019 ), Date( 15, September, 2019 ),
-                     Date( 15, December, 2019 ), Date( 15, March, 2020 ),
-                     Date( 15, June, 2020 ), Date( 15, September, 2020 ),
-                     Date( 15, December, 2020 ), Date( 15, July, 2021 ),
-                     Date( 15, July, 2022 ), Date( 15, July, 2023 ),
-                     Date( 15, July, 2024 ), Date( 15, July, 2025 ),
-                     Date( 15, July, 2026 ), Date( 15, July, 2027 ),
-                     Date( 15, July, 2028 ), Date( 15, July, 2029 ),
-                     Date( 15, July, 2030 ), Date( 15, July, 2031 ),
-                     Date( 15, July, 2034 ), Date( 15, July, 2039 ),
-                     Date( 15, July, 2044 ), Date( 15, July, 2049 ),
-                     Date( 15, July, 2059 ), Date( 15, July, 2069 ) };
-    Rate forwardRates[] = { 0.02322250, 0.02069755, 0.01999178,
-                            0.01808343, 0.01712259, 0.01650936,
-                            0.01659374, 0.01870500, 0.01822999,
-                            0.01818000, 0.01838299, 0.01872399,
-                            0.01910549, 0.01950800, 0.01991010,
-                            0.02030175, 0.02066999, 0.02096700,
-                            0.02166650, 0.02233445, 0.02257999,
-                            0.02266150, 0.02248000, 0.02216500 };
-
-    std::vector<Date> fcd(std::begin(forwardDates), std::end(forwardDates));
-    std::vector<Rate> fcr(std::begin(forwardRates), std::end(forwardRates));
-    ext::shared_ptr<InterpolatedForwardCurve<ForwardFlat> > fcc =
-            ext::make_shared<InterpolatedForwardCurve<ForwardFlat> >( fcd, fcr, Actual360());
-
-    return fcc;
-}
-
-ext::shared_ptr<YieldTermStructure> makeTermStructures() {
-    // discount curve directly
-    Date discountingDates[] = { Date(15, July, 2019 ), Date( 18, July, 2019 ),
-                     Date( 15, September, 2019 ), Date( 15, December, 2019 ),
-                     Date( 15, March, 2020 ), Date( 15, June, 2020 ),
-                     Date( 15, September, 2020 ), Date( 15, December, 2020 ),
-                     Date( 15, July, 2021 ),
-                     Date( 15, July, 2022 ), Date( 15, July, 2023 ),
-                     Date( 15, July, 2024 ), Date( 15, July, 2025 ),
-                     Date( 15, July, 2026 ), Date( 15, July, 2027 ),
-                     Date( 15, July, 2028 ), Date( 15, July, 2029 ),
-                     Date( 15, July, 2030 ), Date( 15, July, 2031 ),
-                     Date( 15, July, 2034 ), Date( 15, July, 2039 ),
-                     Date( 15, July, 2044 ), Date( 15, July, 2049 ),
-                     Date( 15, July, 2059 ), Date( 15, July, 2069 ) };
-    Rate discountingRates[] = { 1.0,
-        0.994100, 0.990833, 0.985851, 0.981365, 0.977135, 0.973075,
-        0.969010, 0.963438, 0.947077, 0.930235, 0.912599, 0.894150,
-        0.875090, 0.855718, 0.836047, 0.816152, 0.796257, 0.776939,
-        0.721127, 0.637235, 0.565823, 0.504040, 0.406721, 0.333739 };
-
-    std::vector<Date> dcd(std::begin(discountingDates), std::end(discountingDates));
-    std::vector<Rate> dcr(std::begin(discountingRates), std::end(discountingRates));
-    ext::shared_ptr<InterpolatedDiscountCurve<Cubic> > dcc =
-            ext::make_shared<InterpolatedDiscountCurve<Cubic> >( dcd, dcr, Actual360());
-
-    return dcc;
-}
-
-/* TODO no calibration so far
-// the vol is calibrated based on the bbg vol surface
-Volatility bbgCalibrationDiagnalVols[] = {
-    0.3654, 0.3594, 0.3700, 0.3671, 0.3627,
-    0.3572, 0.3454, 0.3361, 0.3265, 0.3115
-    // 0.2936, 0.3106, 0.3369, 0.3531, 0.3622,
-    // 0.3855, 0.3926, 0.3859, 0.3884, 0.3109
-    
-    // 0.6878, 0.6766, 0.6828, 0.6765, 0.6747,
-    // 0.6685, 0.6604, 0.6605, 0.6570, 0.6540
-};
-*/
-
-/*
-Volatility bbgCalibrationDiagnalVols[] = {
-    0.3612, 0.3562, 0.3594, 0.3732, 0.3730,
-    0.3747, 0.3665, 0.3580, 0.3497, 0.3338,
-    0.3166
-    // 0.6878, 0.6766, 0.6828, 0.6765, 0.6747,
-    // 0.6685, 0.6604, 0.6605, 0.6570, 0.6540
-};
-*/
-
-// expiry grid
-/*
-Period bbgCalibrationExpiries[] = {
-    Period(1, Months), Period(3, Months), Period(6, Months),
-    Period(9, Months), Period(1, Years),  Period(2, Years),
-    Period(3, Years),  Period(4, Years),  Period(5, Years),
-    Period(6, Years),  Period(7, Years)
-};
-*/
-/* TODO no calibration so far
-Period bbgCalibrationExpiries[] = {
-    Period(1, Months), Period(3, Months), Period(6, Months),
-    Period(9, Months), Period(1, Years),  Period(2, Years),
-    Period(3, Years),  Period(4, Years),  Period(5, Years),
-    Period(6, Years) };
-*/
-
-// maturity grid
-/*
-Period bbgCalibrationMaturities[] = {
-    Period(6, Years), Period(6, Years), Period(6, Years),
-    Period(5, Years), Period(5, Years), Period(4, Years),
-    Period(3, Years), Period(2, Years), Period(1, Years),
-    Period(1, Years), Period(1, Years)
-};
-*/
-
-/* TODO no calibration so far
-Period bbgCalibrationMaturities[] = {
-    Period(6, Years), Period(6, Years), Period(5, Years),
-    Period(5, Years), Period(5, Years), Period(4, Years),
-    Period(3, Years), Period(2, Years), Period(1, Years),
-    Period(1, Years) };
-
-// functor for equation solver
+/ functor for equation solver
 struct ghwBlackSolverImpl {
     ghwBlackSolverImpl(ext::shared_ptr<GeneralizedHullWhite> &model,
             ext::shared_ptr<BlackCalibrationHelper> &helper,
@@ -281,10 +262,11 @@ struct ghwBlackSolverImpl {
         Disposable<Array> params = model_->params();
         for (Size i = index_; i < size_; i++)
             params[size_ + i] = vol;
+        // params[size_ + index_] = vol;
         model_->setParams(params);
         Real npv = helper_->modelValue();
-        Volatility implied = helper_->impliedVolatility(npv, 1e-4, 1000,
-                    1e-8, 10);
+        Volatility implied = helper_->impliedVolatility(npv, 1e-6, 1000,
+                    1e-5, 1000);
         std::cout << "Implied vol: " << implied
                   << " black vol: " << helper_->volatility()->value()
                   << " spot vol: " << vol
@@ -298,15 +280,7 @@ private:
     Size index_;
     Size size_;
 };
-*/
 
-void printParams( ext::shared_ptr<GeneralizedHullWhite> &model ) {
-    Disposable<Array> params = model->params();
-    for (Size i = 0; i < params.size(); i++)
-        std::cout << params[ i ] << std::endl;
-}
-
-/* TODO no calibration so far
 // calibrate the given GeneralizedHullWhite model, the model is updated
 // in place during the calibration.
 void calibrateGhw( ext::shared_ptr<GeneralizedHullWhite> &model,
@@ -314,26 +288,43 @@ void calibrateGhw( ext::shared_ptr<GeneralizedHullWhite> &model,
     // need to build a series of calibration helper.
     // when calibrate the spot vol, the european swaption is assumed.
     std::cout << "In calibrateGhw" << std::endl;
+    Disposable<Array> params = model->params();
+    for (Size i=0; i < helpers.size(); i++)
+        params[helpers.size() + i] = 0.00001;
+    model->setParams(params);
 
     for (Size i = 0; i < helpers.size(); i++) {
-        printParams(model);
         ghwBlackSolverImpl solver(model, helpers[i], i);
         Bisection bsolver;
-        Real root = bsolver.solve(solver, 1e-5, 0.005, 0.00001, 0.02);
+        std::cout << "solve " << i << std::endl;
+        // try {
+            Real root = bsolver.solve(solver, 1e-5, 0.0015, 0.001, 0.02);
+        /*
+        } catch (QuantLib::Error) {
+            std::cout << "Error calibrating " << i << std::endl;
+            Disposable<Array> params = model->params();
+            params[helpers.size() + i] = 0.00001;
+            model->setParams(params);
+        }
+        */
+        /*
         if (i < helpers.size() - 1) {
             // initialize next period vol to current value.
             Disposable<Array> params = model->params();
             params[helpers.size() + i + 1] = root;
             model->setParams(params);
         }
+        */
     }
 
     std::cout << "GHW calibrated." << std::endl;
     // Output the implied Black volatilities
+    /*
     for (Size i=0; i<helpers.size(); i++) {
+        printParams(model);
         Real npv = helpers[i]->modelValue();
         Volatility implied = helpers[i]->impliedVolatility(npv, 1e-4, 1000,
-                    1e-8, 10);
+                    1e-16, 1000);
         Volatility diff = implied - bbgCalibrationDiagnalVols[i];
 
         std::cout << bbgCalibrationExpiries[i] << "x"
@@ -345,34 +336,118 @@ void calibrateGhw( ext::shared_ptr<GeneralizedHullWhite> &model,
                   << " (" << std::setw(7) << std::showpos
                   << io::volatility(diff) << std::noshowpos << ")\n";
     }
+    */
 };
-*/
+
+void printParams( ext::shared_ptr<GeneralizedHullWhite> &model ) {
+    Disposable<Array> params = model->params();
+    for (Size i = 0; i < params.size(); i++)
+        std::cout << params[ i ] << std::endl;
+}
 
 double priceSwaption(double notional,
         QString currency, std::string effectiveDate, std::string maturityDate,
         QString fixedDirection, double fixedCoupon, QString fixedPayFreq, std::string fixedDayCounter,
         QString floatDirection, QString floatIndex, QString floatPayFreq, std::string floatDayCounter,
         QString style, QString position, QString callFreq,
-        std::string today, QString model, QString engine) {
+        std::string today, QString model, QString engine,
+        QString complexity, QString curve) {
     // unused arguments
     currency = currency;
     floatDirection  = floatDirection;
     floatDayCounter = floatDayCounter;
     position = position;
     callFreq = callFreq;
+    bool endOfMonth = true;
     
     Date todaysDate = DateParser::parseFormatted(today, "%Y/%m/%d");
     Calendar calendar = TARGET();
-    Date settlementDate = DateParser::parseFormatted(effectiveDate, "%Y/%m/%d");
+    int settlementDays  = 2;
+    Date settlementDate = calendar.advance(todaysDate, settlementDays,
+                Days, ModifiedFollowing);
     Settings::instance().evaluationDate() = todaysDate;
 
-    std::cout << todaysDate << std::endl;
+    std::cout << todaysDate << " " << settlementDate << std::endl;
 
-    // discounting curve
-    Handle<YieldTermStructure> bbgDiscountingCurve(
-            makeTermStructures());
-    Handle<YieldTermStructure> bbgFwdCurve(
-            makeForwardCurve());
+    // OIS curve construction
+    DayCounter oisDayCounter = Actual360();
+    RelinkableHandle<YieldTermStructure> discountTermStructure;
+
+    std::vector<ext::shared_ptr<ZeroYield::helper> > oisHelper;
+    oisHelper.push_back( ext::shared_ptr<ZeroYield::helper>(
+                                    new DepositRateHelper(
+                                        Handle<Quote>(
+                                                ext::shared_ptr<Quote>(
+                                                    new SimpleQuote(oisRates[ 0 ] / 100))),
+                                            Period(1, Days), settlementDays, calendar,
+                                            ModifiedFollowing, endOfMonth, oisDayCounter ) ) );
+    for (int i = 1; i < sizeof( oisRates ) / sizeof( oisRates[ 0 ] ); i++) {
+        oisHelper.push_back( ext::shared_ptr<ZeroYield::helper>(
+                        new OISRateHelper(
+                                settlementDays, oisTenors[ i ],
+                                Handle<Quote>(
+                                    ext::shared_ptr<Quote>(
+                                        new SimpleQuote( oisRates[ i ] / 100 )) ),
+                                ext::shared_ptr<OvernightIndex>(new FedFunds()) ) ) );
+    }
+
+    // forward curve construction
+    DayCounter cashDayCounter = Actual360();
+    RelinkableHandle<YieldTermStructure> forecastTermStructure; 
+    ext::shared_ptr<IborIndex> liborIndex( new USDLibor( Period(3, Months), forecastTermStructure ) );
+    std::vector<ext::shared_ptr<ZeroYield::helper> > depositHelper;
+    depositHelper.push_back( ext::shared_ptr<ZeroYield::helper >(
+                                        new DepositRateHelper(
+                                            Handle<Quote>(ext::shared_ptr<Quote>(
+                                                    new SimpleQuote(depositRate) ) ),
+                                                depositTenor, settlementDays, calendar,
+                                                ModifiedFollowing, endOfMonth,
+                                                cashDayCounter ) ) );
+    // futures prices represent 3m-2y futures rate
+    DayCounter futuresDayCounter = Actual360();
+    for (int i = 0; i < sizeof( futuresPrices ) / sizeof( futuresPrices[ 0 ] ); i++) {
+        depositHelper.push_back( ext::shared_ptr<ZeroYield::helper>(
+                                        new FuturesRateHelper(
+                                            Handle<Quote>(ext::shared_ptr<Quote>(
+                                                    new SimpleQuote(futuresPrices[i]))),
+                                                futuresMats[i], 3, calendar,
+                                                ModifiedFollowing, endOfMonth,
+                                                futuresDayCounter,
+                                            Handle<Quote>(ext::shared_ptr<SimpleQuote>(new SimpleQuote(0.0))) ) ) );
+    }
+
+    // swap quotes
+    DayCounter fixedLegDayCounter = Thirty360();
+    for (int i = 0; i < sizeof( swapQuotes ) / sizeof( swapQuotes[ 0 ] ); i++) {
+        depositHelper.push_back( ext::shared_ptr<ZeroYield::helper>(
+                                    new SwapRateHelper(
+                                        Handle<Quote>(ext::shared_ptr<Quote>(
+                                                    new SimpleQuote(swapQuotes[ i ]))),
+                                        swapTenors[ i ], calendar, Semiannual,
+                                        ModifiedFollowing, fixedLegDayCounter,
+                                        liborIndex, Handle<Quote>(), Period(0, Days),
+                                        discountTermStructure, settlementDays ) ) );
+    }
+
+    ext::shared_ptr<PiecewiseYieldCurve<ZeroYield, Linear> > depoFuturesSwapCurve(
+                new PiecewiseYieldCurve<ZeroYield, Linear>(
+                        settlementDate, depositHelper, fixedLegDayCounter ) );
+    ext::shared_ptr<PiecewiseYieldCurve<ZeroYield, Linear> > oisCurve(
+                new PiecewiseYieldCurve<ZeroYield, Linear>(
+                        settlementDate, oisHelper, fixedLegDayCounter ) );
+    depoFuturesSwapCurve->enableExtrapolation();
+    oisCurve->enableExtrapolation();
+
+    double *bsVols = NULL;
+    if (isDualCurve(curve)) {
+        discountTermStructure.linkTo( oisCurve );
+        bsVols = oisDiscountingVols;
+    }
+    else {
+        discountTermStructure.linkTo( depoFuturesSwapCurve );
+        bsVols = liborDiscountingVols;
+    }
+    forecastTermStructure.linkTo( depoFuturesSwapCurve );
 
     // define the deal
     // deal property
@@ -385,34 +460,32 @@ double priceSwaption(double notional,
     Frequency floatLegFrequency = getQuantLibPayFreq(floatPayFreq);
     BusinessDayConvention floatLegConvention = ModifiedFollowing;
 
-    Date startDate = settlementDate;
+    Date startDate = DateParser::parseFormatted(effectiveDate, "%Y/%m/%d");
     Date maturity = DateParser::parseFormatted(maturityDate, "%Y/%m/%d");
 
     // fixed leg property
-    DayCounter fixedLegDayCounter = getQuantLibDayCounter(fixedDayCounter);
+    fixedLegDayCounter = getQuantLibDayCounter(fixedDayCounter);
     Rate fixedRate = fixedCoupon;
     Schedule fixedSchedule(startDate, maturity, Period(fixedLegFrequency),
                            calendar, fixedLegConvention, fixedLegConvention,
-                           DateGeneration::Forward, false);
+                           DateGeneration::Backward, endOfMonth);
 
     // float leg property
-    // TODO adapt to China index
-    ext::shared_ptr<IborIndex> bbgIndex3M(getQuantLibIndex(floatIndex,
-                    calendar, bbgFwdCurve));
+    DayCounter floatLegDayCounter = Actual360();
     Schedule floatSchedule(startDate, maturity, Period(floatLegFrequency),
                            calendar,
                            floatLegConvention, floatLegConvention,
-                           DateGeneration::Forward, false);
+                           DateGeneration::Backward, endOfMonth);
 
     ext::shared_ptr<VanillaSwap> swap(new VanillaSwap(
         type, notional,
         fixedSchedule, fixedRate, fixedLegDayCounter,
-        floatSchedule, bbgIndex3M, 0.0,
-        bbgIndex3M->dayCounter()));
+        floatSchedule, liborIndex, 0.0,
+        floatLegDayCounter));
 
     // build the at the money swap
     swap->setPricingEngine(ext::shared_ptr<PricingEngine>(
-                new DiscountingSwapEngine(bbgDiscountingCurve)));
+                new DiscountingSwapEngine(discountTermStructure)));
 
     // construct swaption exercise
     ext::shared_ptr<Exercise> exercise = getQuantLibOptionExercise(style,
@@ -420,8 +493,8 @@ double priceSwaption(double notional,
     Swaption swaption(swap, exercise);
 
     // pricing with generalized hull white for piece-wise term structure fit
-    ext::shared_ptr<GeneralizedHullWhite> piecewiseHw = getQuantLibModel(model, bbgFwdCurve);
-    ext::shared_ptr<PricingEngine> pricingEngine = getQuantLibPricingEngine(engine, piecewiseHw, bbgDiscountingCurve);
+    ext::shared_ptr<GeneralizedHullWhite> piecewiseHw = getQuantLibModel(model, depoFuturesSwapCurve);
+    ext::shared_ptr<PricingEngine> pricingEngine = getQuantLibPricingEngine(engine, piecewiseHw, discountTermStructure);
     swaption.setPricingEngine(pricingEngine);
     std::cout << "Piecewise Hull-White price at " << swaption.NPV() << std::endl;
 

@@ -13,7 +13,7 @@ CXX           = g++
 DEFINES       = -DQT_NO_DEBUG -DQT_GUI_LIB -DQT_CORE_LIB -DQT_SHARED
 CFLAGS        = -pipe -O2 -arch x86_64 -Xarch_x86_64 -mmacosx-version-min=10.14 -Wall -W $(DEFINES)
 CXXFLAGS      = -pipe -O2 -arch x86_64 -Xarch_x86_64 -mmacosx-version-min=10.14 -std=c++17 -Wall -W $(DEFINES)
-INCPATH       = -I../../../../anaconda/mkspecs/macx-g++ -I. -I../../../../anaconda/include/QtCore -I../../../../anaconda/include/QtGui -I../../../../anaconda/include -I. -Isrc -Iinclude
+INCPATH       = -I../../../../anaconda/mkspecs/macx-g++ -I. -I../../../../anaconda/include/Qt -I../../../../anaconda/include/Qt/QtCore -I../../../../anaconda/include/Qt/QtGui -I../../../../anaconda/include -I. -Isrc -Iinclude
 LINK          = g++
 LFLAGS        = -headerpad_max_install_names -arch x86_64 -Xarch_x86_64 -mmacosx-version-min=10.14 -Xlinker -rpath -Xlinker lib
 LIBS          = $(SUBLIBS)  -L/Users/qiushuang/anaconda/lib -lQtGui -L/Users/qiushuang/anaconda/lib -Llib -lQtCore -lOpenXLSX -lQuantLib
