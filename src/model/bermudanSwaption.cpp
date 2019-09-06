@@ -20,10 +20,14 @@
 
 #include <ql/instruments/swaption.hpp>
 #include <ql/pricingengines/swaption/fdhullwhiteswaptionengine.hpp>
+#include <ql/pricingengines/swaption/fdg2swaptionengine.hpp>
 #include <ql/pricingengines/swaption/treeswaptionengine.hpp>
+#include <ql/pricingengines/swaption/g2swaptionengine.hpp>
 #include <ql/models/shortrate/calibrationhelpers/swaptionhelper.hpp>
+#include <ql/models/shortrate/twofactormodels/g2.hpp>
 #include <ql/math/array.hpp>
 #include <ql/math/optimization/levenbergmarquardt.hpp>
+#include <ql/math/optimization/simplex.hpp>
 #include <ql/math/solvers1d/bisection.hpp>
 #include <ql/math/solvers1d/ridder.hpp>
 
@@ -157,6 +161,32 @@ void bbgCalibrateModel(
     }
 }
 
+void calibrateG2Model(
+          const double *bsImpliedVols,
+          const ext::shared_ptr<ShortRateModel>& model,
+          const std::vector<ext::shared_ptr<BlackCalibrationHelper> >& helpers,
+          double simplex) {
+    Simplex sm(simplex);
+    model->calibrate(helpers, sm, EndCriteria(1000, 250, 1e-7, 1e-7, 1e-7));
+
+    // Output the implied Black volatilities
+    for (Size i=0; i<helpers.size(); i++) {
+        Real npv = helpers[i]->modelValue();
+        Volatility implied = helpers[i]->impliedVolatility(npv, 1e-4,
+                1000, 0.05, 0.50);
+        Volatility diff = implied - bsImpliedVols[i];
+
+        std::cout << maturities[i] << "x"
+                  << lengths[i] << "Y"
+                  << std::setprecision(5) << std::noshowpos
+                  << ": model " << std::setw(7) << io::volatility(implied)
+                  << ", market " << std::setw(7)
+                  << io::volatility(bsImpliedVols[i])
+                  << " (" << std::setw(7) << std::showpos
+                  << io::volatility(diff) << std::noshowpos << ")\n";
+    }
+}
+
 ext::shared_ptr<GeneralizedHullWhite> makeGhw(
             RelinkableHandle<YieldTermStructure> &yt, Real speed) {
     std::vector<Date> vd = std::vector<Date>(std::begin(ghwDates),
@@ -246,34 +276,49 @@ ext::shared_ptr<Exercise> getQuantLibOptionExercise(QString style,
     return ext::shared_ptr<Exercise>(NULL);
 }
 
-ext::shared_ptr<GeneralizedHullWhite> getQuantLibModel(QString model,
-            RelinkableHandle<YieldTermStructure> &fwdCurve) {
-    model = model;
-    return ext::shared_ptr<GeneralizedHullWhite>(makeGhw(
-                    fwdCurve, 0.03));
-}
-
-ext::shared_ptr<PricingEngine> getQuantLibPricingEngine(QString engine,
-            ext::shared_ptr<GeneralizedHullWhite> model,
-            Handle<YieldTermStructure> &discountCurve) {
-    engine = engine;
-    return ext::shared_ptr<PricingEngine>(
-                new TreeSwaptionEngine(model, 500, discountCurve));
-}
+ext::shared_ptr<GeneralizedHullWhite> buildGhw(
+            const Handle<YieldTermStructure> &yt, Real speed) {
+    Date dates[] = { Date(16, July,    2019),
+                     Date(16, August,  2019),
+                     Date(15, October, 2019),
+                     Date(15, January, 2020),
+                     Date(16, April,   2020),
+                     Date(16, July,    2020),
+                     Date(16, July,    2021),
+                     Date(18, July,    2022),
+                     Date(17, July,    2023),
+                     Date(16, July,    2024) };
+    Real vols[] = { 0.0075, 0.0073, 0.0073, 
+                    0.0072, 0.0073, 0.0072,
+                    0.0070, 0.0072, 0.0070,
+                    0.0075 };
+    std::vector<Date> vd = std::vector<Date>(std::begin(dates),
+                                             std::end(dates));
+    std::vector<Real> vv = std::vector<Real>(std::begin(vols),
+                                             std::end(vols));
+    std::vector<Real> vr = std::vector<Real>(vv.size(), speed);
+    return ext::make_shared<GeneralizedHullWhite>(yt, vd, vd, vr, vv);
+};
 
 // functor for equation solver
 struct ghwBlackSolverImpl {
     ghwBlackSolverImpl(ext::shared_ptr<GeneralizedHullWhite> &model,
             ext::shared_ptr<BlackCalibrationHelper> &helper,
-            Size index):model_(model), helper_(helper), index_(index),
-                size_(model_->FixedReversion().size() / 2) {
+            Size index, bool fillUncalibrated):model_(model),
+                helper_(helper), index_(index),
+                size_(model_->FixedReversion().size() / 2),
+                fillUncalibrated_(fillUncalibrated) {
     }
 
     Real operator()(Real vol) const {
         // size of the model
         Disposable<Array> params = model_->params();
-        for (Size i = index_; i < size_; i++)
-            params[size_ + i] = vol;
+        if (fillUncalibrated_) {
+            for (Size i = index_; i < size_; i++)
+                params[size_ + i] = vol;
+        } else {
+            params[size_ + index_] = vol;
+        }
         // params[size_ + index_] = vol;
         model_->setParams(params);
         Real npv = helper_->modelValue();
@@ -291,70 +336,139 @@ private:
     ext::shared_ptr<BlackCalibrationHelper> &helper_;
     Size index_;
     Size size_;
+    bool fillUncalibrated_;
 };
 
-// calibrate the given GeneralizedHullWhite model, the model is updated
-// in place during the calibration.
 void calibrateGhw( ext::shared_ptr<GeneralizedHullWhite> &model,
-        std::vector<ext::shared_ptr<BlackCalibrationHelper> >& helpers) {
+        std::vector<ext::shared_ptr<BlackCalibrationHelper> >& helpers,
+        bool fillUncalibrated) {
     // need to build a series of calibration helper.
     // when calibrate the spot vol, the european swaption is assumed.
     std::cout << "In calibrateGhw" << std::endl;
-    Disposable<Array> params = model->params();
-    for (Size i=0; i < helpers.size(); i++)
-        params[helpers.size() + i] = 0.00001;
-    model->setParams(params);
 
     for (Size i = 0; i < helpers.size(); i++) {
-        ghwBlackSolverImpl solver(model, helpers[i], i);
+        ghwBlackSolverImpl solver(model, helpers[i], i, fillUncalibrated);
         Bisection bsolver;
         std::cout << "solve " << i << std::endl;
-        // try {
-            Real root = bsolver.solve(solver, 1e-5, 0.0015, 0.001, 0.02);
-        /*
-        } catch (QuantLib::Error) {
-            std::cout << "Error calibrating " << i << std::endl;
-            Disposable<Array> params = model->params();
-            params[helpers.size() + i] = 0.00001;
-            model->setParams(params);
-        }
-        */
-        /*
-        if (i < helpers.size() - 1) {
-            // initialize next period vol to current value.
-            Disposable<Array> params = model->params();
-            params[helpers.size() + i + 1] = root;
-            model->setParams(params);
-        }
-        */
+        Real root = bsolver.solve(solver, 1e-5, 0.0015, 0.001, 0.02);
     }
 
     std::cout << "GHW calibrated." << std::endl;
-    // Output the implied Black volatilities
-    /*
-    for (Size i=0; i<helpers.size(); i++) {
-        printParams(model);
-        Real npv = helpers[i]->modelValue();
-        Volatility implied = helpers[i]->impliedVolatility(npv, 1e-4, 1000,
-                    1e-16, 1000);
-        Volatility diff = implied - bbgCalibrationDiagnalVols[i];
-
-        std::cout << bbgCalibrationExpiries[i] << "x"
-                  << bbgCalibrationMaturities[i]
-                  << std::setprecision(5) << std::noshowpos
-                  << ": model " << std::setw(7) << io::volatility(implied)
-                  << ", market " << std::setw(7)
-                  << io::volatility(bbgCalibrationDiagnalVols[i])
-                  << " (" << std::setw(7) << std::showpos
-                  << io::volatility(diff) << std::noshowpos << ")\n";
-    }
-    */
 };
+
 
 void printParams( ext::shared_ptr<GeneralizedHullWhite> &model ) {
     Disposable<Array> params = model->params();
     for (Size i = 0; i < params.size(); i++)
         std::cout << params[ i ] << std::endl;
+}
+
+ext::shared_ptr<PricingEngine> getQuantLibPricingEngine (
+            QString model, QString engine,
+            QString complexity, Size nHelpers,
+            ext::shared_ptr<IborIndex> &liborIndex, double *bsVols,
+            RelinkableHandle<YieldTermStructure> &fwdTermStructure,
+            RelinkableHandle<YieldTermStructure> &discountTermStructure) {
+    std::vector<ext::shared_ptr<BlackCalibrationHelper> > bbgCalibrateSwaptions;
+
+    if (model == "Hull-White One Factor") {
+        if (complexity == QString::fromUtf8( "常函数" )) {
+            ext::shared_ptr<HullWhite> bbgHW(
+                        new HullWhite(fwdTermStructure, 0.03, 0.00727));
+
+            std::vector<bool> bbgFixParam;
+            bbgFixParam.push_back(true);
+            bbgFixParam.push_back(false);
+            for (Size i=0; i<nHelpers; i++) {
+                ext::shared_ptr<Quote> vol(new SimpleQuote(bsVols[i]));
+                bbgCalibrateSwaptions.push_back(
+                            ext::shared_ptr<BlackCalibrationHelper>(new
+                SwaptionHelper(maturities[i],
+                               lengths[i],
+                               Handle<Quote>(vol),
+                               liborIndex,
+                               Period(6, Months),
+                               Thirty360(Thirty360::USA),
+                               Actual360(),
+                               discountTermStructure)));
+
+                // set pricing engine
+                bbgCalibrateSwaptions[i]->setPricingEngine(
+                       ext::shared_ptr<PricingEngine>(
+                            new FdHullWhiteSwaptionEngine(bbgHW)));
+            }
+
+            bbgCalibrateModel(
+                    bsVols, bbgHW, bbgCalibrateSwaptions, bbgFixParam);
+            std::cout << "Calibrated (with BBG vol) results: "
+                      << "a = " << bbgHW->params()[0] << ", "
+                      << "sigma = " << bbgHW->params()[1] << std::endl;
+
+            return ext::shared_ptr<PricingEngine>(
+                        new FdHullWhiteSwaptionEngine(bbgHW));
+        } else {
+            // calibrate piecewise Hull-White one factor
+            // named generalized Hull White.
+            ext::shared_ptr<GeneralizedHullWhite> bbgPiecewiseHW(buildGhw(
+                            fwdTermStructure, 0.03));
+
+            std::cout << "Calibrate piecewise Hull-White model..." << std::endl;
+            for (Size i = 0; i < nHelpers; i++) {
+                ext::shared_ptr<Quote> vol(
+                            new SimpleQuote(bsVols[i]));
+                bbgCalibrateSwaptions.push_back(ext::shared_ptr<BlackCalibrationHelper>(new
+                        SwaptionHelper(maturities[i],
+                                       lengths[i],
+                                       Handle<Quote>(vol),
+                                       liborIndex,
+                                       Period(6, Months),
+                                       Thirty360(Thirty360::USA),
+                                       Actual360(),
+                                       discountTermStructure)));
+                bbgCalibrateSwaptions[i]->setPricingEngine(ext::shared_ptr<PricingEngine>(
+                            new TreeSwaptionEngine(bbgPiecewiseHW, 150,
+                                    discountTermStructure)));
+            }
+
+            calibrateGhw(bbgPiecewiseHW, bbgCalibrateSwaptions, true);
+            calibrateGhw(bbgPiecewiseHW, bbgCalibrateSwaptions, false);
+            calibrateGhw(bbgPiecewiseHW, bbgCalibrateSwaptions, false);
+
+            return ext::shared_ptr<PricingEngine>(
+                    new TreeSwaptionEngine(
+                            bbgPiecewiseHW, 500, discountTermStructure));
+        }
+} else {
+        ext::shared_ptr<G2> g2(
+                    new G2(fwdTermStructure, 0.0599, 0.0026,0.0599, 0.0094, -0.7014));
+
+        for (Size i=0; i<nHelpers; i++) {
+            ext::shared_ptr<Quote> vol(new SimpleQuote(bsVols[i]));
+            bbgCalibrateSwaptions.push_back(
+                        ext::shared_ptr<BlackCalibrationHelper>(new
+            SwaptionHelper(maturities[i],
+                           lengths[i],
+                           Handle<Quote>(vol),
+                           liborIndex,
+                           Period(6, Months),
+                           Thirty360(Thirty360::USA),
+                           Actual360(),
+                           discountTermStructure)));
+
+            // set pricing engine
+            bbgCalibrateSwaptions[i]->setPricingEngine(
+                   ext::shared_ptr<PricingEngine>(
+                        new G2SwaptionEngine(g2, 6, 100)));
+        }
+        /*
+        calibrateG2Model(
+                bsVols, g2, bbgCalibrateSwaptions, 0.05);
+        */
+        std::cout << "Calibrated (with BBG vol) results: "
+            << g2->params() << std::endl;
+        return ext::shared_ptr<PricingEngine>(
+                    new FdG2SwaptionEngine(g2, 500));
+    }
 }
 
 double priceSwaption(double notional,
@@ -510,41 +624,14 @@ double priceSwaption(double notional,
     Swaption swaption(swap, exercise);
 
     // pricing with generalized hull white for piece-wise term structure fit
-    // ext::shared_ptr<GeneralizedHullWhite> piecewiseHw = getQuantLibModel(model, forecastTermStructure);
-    // ext::shared_ptr<PricingEngine> pricingEngine = getQuantLibPricingEngine(engine, piecewiseHw, discountTermStructure);
-    // swaption.setPricingEngine(pricingEngine);
-    ext::shared_ptr<HullWhite> bbgHW(new HullWhite(forecastTermStructure,
-                0.03, 0.00727));
+    ext::shared_ptr<PricingEngine> pricingEngine = getQuantLibPricingEngine(
+                model, engine, complexity,
+                sizeof(oisDiscountingVols) / sizeof(oisDiscountingVols[0]),
+                liborIndex, bsVols,
+                forecastTermStructure, discountTermStructure);
+    swaption.setPricingEngine(pricingEngine);
 
-    std::vector<bool> bbgFixParam;
-    bbgFixParam.push_back(true);
-    bbgFixParam.push_back(false);
-
-    std::vector<ext::shared_ptr<BlackCalibrationHelper> > bbgCalibrateSwaptions;
-    for (Size i=0; i<sizeof(oisDiscountingVols) / sizeof(oisDiscountingVols[0]); i++) {
-        ext::shared_ptr<Quote> vol(new SimpleQuote(bsVols[i]));
-        bbgCalibrateSwaptions.push_back(ext::shared_ptr<BlackCalibrationHelper>(new
-            SwaptionHelper(maturities[i],
-                           lengths[i],
-                           Handle<Quote>(vol),
-                           liborIndex,
-                           liborIndex->tenor(),
-                           liborIndex->dayCounter(),
-                           liborIndex->dayCounter(),
-                           discountTermStructure)));
-
-        // set pricing engine
-        bbgCalibrateSwaptions[i]->setPricingEngine(ext::shared_ptr<PricingEngine>(
-                        new FdHullWhiteSwaptionEngine(bbgHW)));
-    }
-    bbgCalibrateModel(bsVols, bbgHW, bbgCalibrateSwaptions, bbgFixParam);
-    std::cout << "Calibrated (with BBG vol) results: "
-              << "a = " << bbgHW->params()[0] << ", "
-              << "sigma = " << bbgHW->params()[1] << std::endl;
-
-    swaption.setPricingEngine(ext::shared_ptr<PricingEngine>(
-            new FdHullWhiteSwaptionEngine(bbgHW)));
-    std::cout << "Piecewise Hull-White price at " << swaption.NPV() << std::endl;
+    std::cout << "Model price at " << swaption.NPV() << std::endl;
 
     return swaption.NPV();
 }

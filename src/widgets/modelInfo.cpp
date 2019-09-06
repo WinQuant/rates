@@ -29,6 +29,7 @@ ModelInfo::ModelInfo() : QWidget() {
 
     // supported short-rate model
     model_->addItem(QString::fromUtf8("Hull-White One Factor"));
+    model_->addItem(QString::fromUtf8("Hull-White Two Factor"));
 
     // default engine
     engine_->addItem(QString::fromUtf8("有限差分(FD)"));
