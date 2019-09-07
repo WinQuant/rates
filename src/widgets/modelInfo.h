@@ -6,6 +6,7 @@
 #define MODEL_INFO_H
 
 #include <QWidget>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDateEdit>
 #include <QGridLayout>
@@ -23,6 +24,7 @@ public:
     QString engine();
     QString complexity();
     QString curve();
+    bool isExternalVolSurface();
 
     void setPrice(double returnRate, double price);
 private:
@@ -40,6 +42,7 @@ private:
     QComboBox *engine_;
     QComboBox *complexity_;
     QComboBox *curves_;
+    QCheckBox *externalVols_;
     QLabel *pricePerc_;
     QLabel *price_;
 

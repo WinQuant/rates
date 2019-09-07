@@ -24,6 +24,7 @@ ModelInfo::ModelInfo() : QWidget() {
     engine_ = new QComboBox();
     complexity_ = new QComboBox();
     curves_ = new QComboBox();
+    externalVols_ = new QCheckBox(QString::fromUtf8("使用导入波动率曲面"));
     pricePerc_ = new QLabel();
     price_ = new QLabel();
 
@@ -64,6 +65,7 @@ ModelInfo::ModelInfo() : QWidget() {
     layout->addWidget(labelPricePerc_, 3, 3, Qt::AlignLeft);
     layout->addWidget(pricePerc_, 3, 4, Qt::AlignLeft);
 
+    layout->addWidget(externalVols_, 4, 1, Qt::AlignLeft);
     layout->addWidget(labelPrice_, 4, 3, Qt::AlignLeft);
     layout->addWidget(price_, 4, 4, Qt::AlignLeft);
 
@@ -84,6 +86,7 @@ ModelInfo::~ModelInfo() {
     delete engine_;
     delete complexity_;
     delete curves_;
+    delete externalVols_;
     delete pricePerc_;
     delete price_;
 
@@ -108,6 +111,10 @@ QString ModelInfo::complexity() {
 
 QString ModelInfo::curve() {
     return curves_->currentText();
+}
+
+bool ModelInfo::isExternalVolSurface() {
+    return externalVols_->checkState() == Qt::Checked;
 }
 
 void ModelInfo::setPrice(double returnRate, double price) {

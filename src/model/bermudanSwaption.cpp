@@ -457,13 +457,34 @@ ext::shared_ptr<PricingEngine> getQuantLibPricingEngine (
     }
 }
 
+double *extractExternalVols(std::vector<std::vector<double> > &volSurface) {
+    double *vols = new double[10];
+    vols[ 0 ] = volSurface[ 0 ][ 5 ] / 100;
+    vols[ 1 ] = volSurface[ 1 ][ 5 ] / 100;
+    vols[ 2 ] = volSurface[ 2 ][ 4 ] / 100;
+    vols[ 3 ] = volSurface[ 3 ][ 4 ] / 100;
+    vols[ 4 ] = volSurface[ 4 ][ 4 ] / 100;
+    vols[ 5 ] = volSurface[ 5 ][ 3 ] / 100;
+    vols[ 6 ] = volSurface[ 6 ][ 2 ] / 100;
+    vols[ 7 ] = volSurface[ 7 ][ 1 ] / 100;
+    vols[ 8 ] = volSurface[ 8 ][ 0 ] / 100;
+    vols[ 9 ] = volSurface[ 9 ][ 0 ] / 100;
+
+    for (Size i = 0; i < 10; i++) {
+        std::cout << i << " " << vols[ i ] << std::endl;
+    }
+
+    return vols;
+}
+
 double priceSwaption(double notional,
         QString currency, std::string effectiveDate, std::string maturityDate,
         QString fixedDirection, double fixedCoupon, QString fixedPayFreq, std::string fixedDayCounter,
         QString floatDirection, QString floatIndex, QString floatPayFreq, std::string floatDayCounter,
         QString style, QString position, QString callFreq,
         std::string today, QString model, QString engine,
-        QString complexity, QString curve) {
+        QString complexity, QString curve, bool useExternalVolSurface,
+        std::vector<std::vector<double> > &volSurface) {
     // unused arguments
     currency = currency;
     floatDirection  = floatDirection;
@@ -561,6 +582,9 @@ double priceSwaption(double notional,
     }
     forecastTermStructure.linkTo( depoFuturesSwapCurve );
 
+    // if use external vol surface, read from user input.
+    if (useExternalVolSurface) bsVols = extractExternalVols(volSurface);
+
     // define the deal
     // deal property
     VanillaSwap::Type type = getQuantLibPayDirection(fixedDirection);
@@ -619,6 +643,9 @@ double priceSwaption(double notional,
     swaption.setPricingEngine(pricingEngine);
 
     std::cout << "Model price at " << swaption.NPV() << std::endl;
+
+    // release memory if useExternalVolSurface
+    if (useExternalVolSurface) delete [] bsVols;
 
     return swaption.NPV();
 }

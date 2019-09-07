@@ -3,6 +3,7 @@
 #include <QString>
 #include <QMenuBar>
 #include <QMenu>
+#include <QMessageBox>
 #include <QTableWidgetItem>
 
 #include <OpenXLSX/OpenXLSX.h>
@@ -90,12 +91,19 @@ void RatesMainWindow::openBbg() {
                     rowIndex_.push_back(
                             sheet.Cell(i + 1, j + 1).Value().Get<std::string>());
                 } else {
-                    value_[i - 1][j - 1] = sheet.Cell(i + 1, j + 1).Value().Get<double>();
+                    try {
+                        value_[i - 1][j - 1] = sheet.Cell(i + 1, j + 1).Value().Get<double>();
+                    } catch ( OpenXLSX::XLException e ) {
+                        value_[i - 1][j - 1] = sheet.Cell(i + 1, j + 1).Value().Get<int>();
+                    }
+                    std::cout << i << " " << j << std::endl;
+                    std::cout << value_[i - 1][j - 1] << std::endl;
                 }
             }
         }
     }
     
+    /*
     // load curve
     XLWorksheet curves = workbook.Worksheet("Curve");
     rowCount = curves.RowCount();
@@ -105,7 +113,8 @@ void RatesMainWindow::openBbg() {
     readColumn<double>(curves, CURVE_SHIFTED_RATE_IDX, rowCount, shiftedRate_);
     readColumn<double>(curves, CURVE_ZERO_RATE_IDX, rowCount, zeroRate_);
     readColumn<double>(curves, CURVE_DISCOUNT_FACTOR_IDX, rowCount, discount_);
-
+    */
+    std::cout << "Read file done." << std::endl;
     // notify the vol table value changes
     updateVolTable();
 }
@@ -192,11 +201,21 @@ void RatesMainWindow::calculate() {
     QString complexity = modelInfo_->complexity();
     QString curve = modelInfo_->curve();
 
-    double price = priceSwaption(notional,
-            currency, effectiveDate, maturityDate,
-            fixedDirection, fixedCoupon, fixedPayFreq, fixedDayCounter,
-            floatDirection, floatIndex, floatPayFreq, floatDayCounter,
-            style, position, callFreq,
-            pricingDate, model, engine, complexity, curve);
-    modelInfo_->setPrice(price / notional, price);
+    bool useExternalVolSurface = modelInfo_->isExternalVolSurface();
+
+    if (!useExternalVolSurface || value_.size() > 0) {
+        double price = priceSwaption(notional,
+                currency, effectiveDate, maturityDate,
+                fixedDirection, fixedCoupon, fixedPayFreq, fixedDayCounter,
+                floatDirection, floatIndex, floatPayFreq, floatDayCounter,
+                style, position, callFreq,
+                pricingDate, model, engine, complexity, curve,
+                useExternalVolSurface, value_);
+        modelInfo_->setPrice(price / notional, price);
+    } else {
+        // no vol surface loaded, alert.
+        QMessageBox::critical(this, QString::fromUtf8("未加载波动率曲面"),
+                    QString::fromUtf8("请先加载波动率曲面！"),
+                               QMessageBox::Ok);
+    }
 }

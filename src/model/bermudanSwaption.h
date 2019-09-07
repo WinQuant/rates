@@ -15,6 +15,7 @@ double priceSwaption(double notional,
         QString floatDirection, QString floatIndex, QString floatPayFreq, std::string floatDayCounter,
         QString style, QString position, QString callFreq,
         std::string today, QString model, QString engine,
-        QString complexity, QString curve);
+        QString complexity, QString curve, bool useExternalVolSurface,
+        std::vector<std::vector<double> > &volSurface);
 
 #endif
