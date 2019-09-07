@@ -151,7 +151,7 @@ void bbgCalibrateModel(
         Volatility diff = implied - bsImpliedVols[i];
 
         std::cout << maturities[i] << "x"
-                  << lengths[i] << "Y"
+                  << lengths[i]
                   << std::setprecision(5) << std::noshowpos
                   << ": model " << std::setw(7) << io::volatility(implied)
                   << ", market " << std::setw(7)
@@ -166,18 +166,27 @@ void calibrateG2Model(
           const ext::shared_ptr<ShortRateModel>& model,
           const std::vector<ext::shared_ptr<BlackCalibrationHelper> >& helpers,
           double simplex) {
-    Simplex sm(simplex);
-    model->calibrate(helpers, sm, EndCriteria(1000, 250, 1e-7, 1e-7, 1e-7));
+
+    std::vector<bool> fixParameters;
+    fixParameters.push_back( true );
+    fixParameters.push_back( false );
+    fixParameters.push_back( true );
+    fixParameters.push_back( false );
+    fixParameters.push_back( false );
+    LevenbergMarquardt om(1e-8, 1e-8, 1e-8);
+    model->calibrate(helpers, om, EndCriteria(1000, 250, 1e-6, 1e-8, 1e-8),
+            Constraint(), std::vector<Real>(), fixParameters);
 
     // Output the implied Black volatilities
     for (Size i=0; i<helpers.size(); i++) {
         Real npv = helpers[i]->modelValue();
         Volatility implied = helpers[i]->impliedVolatility(npv, 1e-4,
                 1000, 0.05, 0.50);
+        std::cout << npv << std::endl;
         Volatility diff = implied - bsImpliedVols[i];
 
         std::cout << maturities[i] << "x"
-                  << lengths[i] << "Y"
+                  << lengths[i]
                   << std::setprecision(5) << std::noshowpos
                   << ": model " << std::setw(7) << io::volatility(implied)
                   << ", market " << std::setw(7)
@@ -319,7 +328,6 @@ struct ghwBlackSolverImpl {
         } else {
             params[size_ + index_] = vol;
         }
-        // params[size_ + index_] = vol;
         model_->setParams(params);
         Real npv = helper_->modelValue();
         Volatility implied = helper_->impliedVolatility(npv, 1e-6, 1000,
@@ -369,7 +377,21 @@ ext::shared_ptr<PricingEngine> getQuantLibPricingEngine (
             ext::shared_ptr<IborIndex> &liborIndex, double *bsVols,
             RelinkableHandle<YieldTermStructure> &fwdTermStructure,
             RelinkableHandle<YieldTermStructure> &discountTermStructure) {
+    // setup calibration helpers
     std::vector<ext::shared_ptr<BlackCalibrationHelper> > bbgCalibrateSwaptions;
+    for (Size i=0; i<nHelpers; i++) {
+        ext::shared_ptr<Quote> vol(new SimpleQuote(bsVols[i]));
+        bbgCalibrateSwaptions.push_back(
+                    ext::shared_ptr<BlackCalibrationHelper>(new
+                            SwaptionHelper(maturities[i],
+                                           lengths[i],
+                                           Handle<Quote>(vol),
+                                           liborIndex,
+                                           Period(6, Months),
+                                           Thirty360(Thirty360::USA),
+                                           Actual360(),
+                                           discountTermStructure)));
+    }
 
     if (model == "Hull-White One Factor") {
         if (complexity == QString::fromUtf8( "常函数" )) {
@@ -379,19 +401,7 @@ ext::shared_ptr<PricingEngine> getQuantLibPricingEngine (
             std::vector<bool> bbgFixParam;
             bbgFixParam.push_back(true);
             bbgFixParam.push_back(false);
-            for (Size i=0; i<nHelpers; i++) {
-                ext::shared_ptr<Quote> vol(new SimpleQuote(bsVols[i]));
-                bbgCalibrateSwaptions.push_back(
-                            ext::shared_ptr<BlackCalibrationHelper>(new
-                SwaptionHelper(maturities[i],
-                               lengths[i],
-                               Handle<Quote>(vol),
-                               liborIndex,
-                               Period(6, Months),
-                               Thirty360(Thirty360::USA),
-                               Actual360(),
-                               discountTermStructure)));
-
+            for (Size i = 0; i < nHelpers; i++ ) {
                 // set pricing engine
                 bbgCalibrateSwaptions[i]->setPricingEngine(
                        ext::shared_ptr<PricingEngine>(
@@ -414,17 +424,6 @@ ext::shared_ptr<PricingEngine> getQuantLibPricingEngine (
 
             std::cout << "Calibrate piecewise Hull-White model..." << std::endl;
             for (Size i = 0; i < nHelpers; i++) {
-                ext::shared_ptr<Quote> vol(
-                            new SimpleQuote(bsVols[i]));
-                bbgCalibrateSwaptions.push_back(ext::shared_ptr<BlackCalibrationHelper>(new
-                        SwaptionHelper(maturities[i],
-                                       lengths[i],
-                                       Handle<Quote>(vol),
-                                       liborIndex,
-                                       Period(6, Months),
-                                       Thirty360(Thirty360::USA),
-                                       Actual360(),
-                                       discountTermStructure)));
                 bbgCalibrateSwaptions[i]->setPricingEngine(ext::shared_ptr<PricingEngine>(
                             new TreeSwaptionEngine(bbgPiecewiseHW, 150,
                                     discountTermStructure)));
@@ -440,30 +439,17 @@ ext::shared_ptr<PricingEngine> getQuantLibPricingEngine (
         }
 } else {
         ext::shared_ptr<G2> g2(
-                    new G2(fwdTermStructure, 0.0599, 0.0026,0.0599, 0.0094, -0.7014));
+                    new G2(fwdTermStructure, 0.049235,
+                             0.00278221, 0.049235, 0.00916386, -0.650439));
 
         for (Size i=0; i<nHelpers; i++) {
-            ext::shared_ptr<Quote> vol(new SimpleQuote(bsVols[i]));
-            bbgCalibrateSwaptions.push_back(
-                        ext::shared_ptr<BlackCalibrationHelper>(new
-            SwaptionHelper(maturities[i],
-                           lengths[i],
-                           Handle<Quote>(vol),
-                           liborIndex,
-                           Period(6, Months),
-                           Thirty360(Thirty360::USA),
-                           Actual360(),
-                           discountTermStructure)));
-
             // set pricing engine
             bbgCalibrateSwaptions[i]->setPricingEngine(
                    ext::shared_ptr<PricingEngine>(
                         new G2SwaptionEngine(g2, 6, 100)));
         }
-        /*
         calibrateG2Model(
                 bsVols, g2, bbgCalibrateSwaptions, 0.05);
-        */
         std::cout << "Calibrated (with BBG vol) results: "
             << g2->params() << std::endl;
         return ext::shared_ptr<PricingEngine>(
@@ -628,7 +614,8 @@ double priceSwaption(double notional,
                 model, engine, complexity,
                 sizeof(oisDiscountingVols) / sizeof(oisDiscountingVols[0]),
                 liborIndex, bsVols,
-                forecastTermStructure, discountTermStructure);
+                forecastTermStructure,
+                discountTermStructure);
     swaption.setPricingEngine(pricingEngine);
 
     std::cout << "Model price at " << swaption.NPV() << std::endl;
