@@ -489,6 +489,88 @@ double *extractExternalVols(std::vector<std::vector<double> > &volSurface) {
     return vols;
 }
 
+void bootstrapIrTermStructure(int nOis, Period *oisTenor, double *oisRates,
+            Period depositTenor, double depositRate,
+            int nFuturesPrices, Date *futuresMaturities, double *futuresPrices,
+            int nSwapQuotes, Period *swapTenors, double *swapQuotes,
+            int settlementDays, Calendar calendar, Date settlementDate,
+            DayCounter dayCounter, ext::shared_ptr<IborIndex> liborIndex,
+            bool endOfMonth, bool useDualCurve,
+            RelinkableHandle<YieldTermStructure> &discountTermStructure,
+            RelinkableHandle<YieldTermStructure> &forecastTermStructure) {
+    // OIS curve construction
+    DayCounter oisDayCounter = Actual360();
+    std::vector<ext::shared_ptr<ZeroYield::helper> > oisHelper;
+    oisHelper.push_back( ext::shared_ptr<ZeroYield::helper>(
+                                    new DepositRateHelper(
+                                        Handle<Quote>(
+                                                ext::shared_ptr<Quote>(
+                                                    new SimpleQuote(oisRates[ 0 ] / 100))),
+                                            Period(1, Days), settlementDays, calendar,
+                                            ModifiedFollowing, endOfMonth, oisDayCounter ) ) );
+    for (unsigned long i = 1; i < nOis; i++) {
+        oisHelper.push_back( ext::shared_ptr<ZeroYield::helper>(
+                        new OISRateHelper(
+                                settlementDays, oisTenors[ i ],
+                                Handle<Quote>(
+                                    ext::shared_ptr<Quote>(
+                                        new SimpleQuote( oisRates[ i ] / 100 )) ),
+                                ext::shared_ptr<OvernightIndex>(new FedFunds()) ) ) );
+    }
+
+    // forward curve construction
+    DayCounter cashDayCounter = Actual360();
+    std::vector<ext::shared_ptr<ZeroYield::helper> > depositHelper;
+    depositHelper.push_back( ext::shared_ptr<ZeroYield::helper >(
+                                        new DepositRateHelper(
+                                            Handle<Quote>(ext::shared_ptr<Quote>(
+                                                    new SimpleQuote(depositRate) ) ),
+                                                depositTenor, settlementDays, calendar,
+                                                ModifiedFollowing, endOfMonth,
+                                                cashDayCounter ) ) );
+    // futures prices represent 3m-2y futures rate
+    DayCounter futuresDayCounter = Actual360();
+    for (unsigned long i = 0; i < nFuturesPrices; i++) {
+        depositHelper.push_back( ext::shared_ptr<ZeroYield::helper>(
+                                        new FuturesRateHelper(
+                                            Handle<Quote>(ext::shared_ptr<Quote>(
+                                                    new SimpleQuote(futuresPrices[i]))),
+                                                futuresMats[i], 3, calendar,
+                                                ModifiedFollowing, endOfMonth,
+                                                futuresDayCounter,
+                                            Handle<Quote>(ext::shared_ptr<SimpleQuote>(new SimpleQuote(0.0))) ) ) );
+    }
+
+    // swap quotes
+    for (unsigned long i = 0; i < nSwapQuotes; i++) {
+        depositHelper.push_back( ext::shared_ptr<ZeroYield::helper>(
+                                    new SwapRateHelper(
+                                        Handle<Quote>(ext::shared_ptr<Quote>(
+                                                    new SimpleQuote(swapQuotes[ i ]))),
+                                        swapTenors[ i ], calendar, Semiannual,
+                                        ModifiedFollowing, dayCounter,
+                                        liborIndex, Handle<Quote>(), Period(0, Days),
+                                        discountTermStructure, settlementDays ) ) );
+    }
+
+    ext::shared_ptr<PiecewiseYieldCurve<ZeroYield, Linear> > depoFuturesSwapCurve(
+                new PiecewiseYieldCurve<ZeroYield, Linear>(
+                        settlementDate, depositHelper, dayCounter ) );
+    ext::shared_ptr<PiecewiseYieldCurve<ZeroYield, Linear> > oisCurve(
+                new PiecewiseYieldCurve<ZeroYield, Linear>(
+                        settlementDate, oisHelper, dayCounter ) );
+    depoFuturesSwapCurve->enableExtrapolation();
+    oisCurve->enableExtrapolation();
+
+    if (useDualCurve) {
+        discountTermStructure.linkTo( oisCurve );
+    }
+    else {
+        discountTermStructure.linkTo( depoFuturesSwapCurve );
+    }
+    forecastTermStructure.linkTo( depoFuturesSwapCurve );
+}
+
 double priceSwaption(double notional,
         QString currency, std::string effectiveDate, std::string maturityDate, bool changeFirstExerciseDate, std::string firstExerciseDate,
         QString fixedDirection, double fixedCoupon, QString fixedPayFreq, std::string fixedDayCounter,
@@ -514,85 +596,29 @@ double priceSwaption(double notional,
 
     std::cout << todaysDate << " " << settlementDate << std::endl;
 
-    // OIS curve construction
-    DayCounter oisDayCounter = Actual360();
+
+    DayCounter fixedLegDayCounter = Thirty360();
     RelinkableHandle<YieldTermStructure> discountTermStructure;
-
-    std::vector<ext::shared_ptr<ZeroYield::helper> > oisHelper;
-    oisHelper.push_back( ext::shared_ptr<ZeroYield::helper>(
-                                    new DepositRateHelper(
-                                        Handle<Quote>(
-                                                ext::shared_ptr<Quote>(
-                                                    new SimpleQuote(oisRates[ 0 ] / 100))),
-                                            Period(1, Days), settlementDays, calendar,
-                                            ModifiedFollowing, endOfMonth, oisDayCounter ) ) );
-    for (unsigned long i = 1; i < sizeof( oisRates ) / sizeof( oisRates[ 0 ] ); i++) {
-        oisHelper.push_back( ext::shared_ptr<ZeroYield::helper>(
-                        new OISRateHelper(
-                                settlementDays, oisTenors[ i ],
-                                Handle<Quote>(
-                                    ext::shared_ptr<Quote>(
-                                        new SimpleQuote( oisRates[ i ] / 100 )) ),
-                                ext::shared_ptr<OvernightIndex>(new FedFunds()) ) ) );
-    }
-
-    // forward curve construction
-    DayCounter cashDayCounter = Actual360();
     RelinkableHandle<YieldTermStructure> forecastTermStructure; 
     ext::shared_ptr<IborIndex> liborIndex( new USDLibor( Period(3, Months), forecastTermStructure ) );
-    std::vector<ext::shared_ptr<ZeroYield::helper> > depositHelper;
-    depositHelper.push_back( ext::shared_ptr<ZeroYield::helper >(
-                                        new DepositRateHelper(
-                                            Handle<Quote>(ext::shared_ptr<Quote>(
-                                                    new SimpleQuote(depositRate) ) ),
-                                                depositTenor, settlementDays, calendar,
-                                                ModifiedFollowing, endOfMonth,
-                                                cashDayCounter ) ) );
-    // futures prices represent 3m-2y futures rate
-    DayCounter futuresDayCounter = Actual360();
-    for (unsigned long i = 0; i < sizeof( futuresPrices ) / sizeof( futuresPrices[ 0 ] ); i++) {
-        depositHelper.push_back( ext::shared_ptr<ZeroYield::helper>(
-                                        new FuturesRateHelper(
-                                            Handle<Quote>(ext::shared_ptr<Quote>(
-                                                    new SimpleQuote(futuresPrices[i]))),
-                                                futuresMats[i], 3, calendar,
-                                                ModifiedFollowing, endOfMonth,
-                                                futuresDayCounter,
-                                            Handle<Quote>(ext::shared_ptr<SimpleQuote>(new SimpleQuote(0.0))) ) ) );
-    }
 
-    // swap quotes
-    DayCounter fixedLegDayCounter = Thirty360();
-    for (unsigned long i = 0; i < sizeof( swapQuotes ) / sizeof( swapQuotes[ 0 ] ); i++) {
-        depositHelper.push_back( ext::shared_ptr<ZeroYield::helper>(
-                                    new SwapRateHelper(
-                                        Handle<Quote>(ext::shared_ptr<Quote>(
-                                                    new SimpleQuote(swapQuotes[ i ]))),
-                                        swapTenors[ i ], calendar, Semiannual,
-                                        ModifiedFollowing, fixedLegDayCounter,
-                                        liborIndex, Handle<Quote>(), Period(0, Days),
-                                        discountTermStructure, settlementDays ) ) );
-    }
+    bool useDualCurve = isDualCurve(curve);
 
-    ext::shared_ptr<PiecewiseYieldCurve<ZeroYield, Linear> > depoFuturesSwapCurve(
-                new PiecewiseYieldCurve<ZeroYield, Linear>(
-                        settlementDate, depositHelper, fixedLegDayCounter ) );
-    ext::shared_ptr<PiecewiseYieldCurve<ZeroYield, Linear> > oisCurve(
-                new PiecewiseYieldCurve<ZeroYield, Linear>(
-                        settlementDate, oisHelper, fixedLegDayCounter ) );
-    depoFuturesSwapCurve->enableExtrapolation();
-    oisCurve->enableExtrapolation();
+    bootstrapIrTermStructure(sizeof(oisRates) / sizeof(oisRates[0]), oisTenors, oisRates,
+            depositTenor, depositRate,
+            sizeof(futuresPrices) / sizeof(futuresPrices[0]), futuresMats, futuresPrices,
+            sizeof(swapQuotes) / sizeof(swapQuotes[0]), swapTenors, swapQuotes,
+            settlementDays, calendar, settlementDate, fixedLegDayCounter, liborIndex,
+            endOfMonth, useDualCurve,
+            discountTermStructure, forecastTermStructure);
 
     double *bsVols = NULL;
-    if (isDualCurve(curve)) {
-        discountTermStructure.linkTo( oisCurve );
+    if (useDualCurve) {
         bsVols = oisDiscountingVols;
     }
     else {
-        discountTermStructure.linkTo( depoFuturesSwapCurve );
         bsVols = liborDiscountingVols;
     }
-    forecastTermStructure.linkTo( depoFuturesSwapCurve );
 
     // if use external vol surface, read from user input.
     if (useExternalVolSurface) bsVols = extractExternalVols(volSurface);

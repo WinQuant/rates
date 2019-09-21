@@ -9,6 +9,16 @@
 
 #include <string>
 
+void bootstrapIrTermStructure(int nOis, Period *oisTenor, double *oisRates,
+            Period depositTenor, double depositRate,
+            int nFuturesPrices, Date *futuresMaturities, double *futuresPrices,
+            int nSwapQuotes, Period *swapTenors, double *swapQuotes,
+            int settlementDays, Calendar calendar, Date settlementDate,
+            DayCounter dayCounter, ext::shared_ptr<IborIndex> liborIndex,
+            bool endOfMonth, bool useDualCurve,
+            RelinkableHandle<YieldTermStructure> &discountTermStructure,
+            RelinkableHandle<YieldTermStructure> &forecastTermStructure);
+
 double priceSwaption(double notional,
         QString currency, std::string effectiveDate, std::string maturityDate, bool changeFirstExerciseDate, std::string firstExerciseDate,
         QString fixedDirection, double fixedCoupon, QString fixedPayFreq, std::string fixedDayCounter,

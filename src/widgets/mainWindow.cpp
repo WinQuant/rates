@@ -103,9 +103,8 @@ void RatesMainWindow::openBbg() {
         }
     }
     
-    /*
     // load curve
-    XLWorksheet curves = workbook.Worksheet("Curve");
+    XLWorksheet curves = workbook.Worksheet("Forward");
     rowCount = curves.RowCount();
     readColumn<std::string>(curves, CURVE_TERM_IDX, rowCount, term_);
     readColumn<double>(curves, CURVE_MARKET_RATE_IDX, rowCount, marketRate_);
@@ -113,7 +112,6 @@ void RatesMainWindow::openBbg() {
     readColumn<double>(curves, CURVE_SHIFTED_RATE_IDX, rowCount, shiftedRate_);
     readColumn<double>(curves, CURVE_ZERO_RATE_IDX, rowCount, zeroRate_);
     readColumn<double>(curves, CURVE_DISCOUNT_FACTOR_IDX, rowCount, discount_);
-    */
     std::cout << "Read file done." << std::endl;
     // notify the vol table value changes
     updateVolTable();
