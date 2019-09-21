@@ -3,17 +3,20 @@
  */
 
 #include "widgets/dealInfo.h"
+#include "widgets/dealInfo.moc"
 
 DealInfo::DealInfo() : QWidget() {
     labelNotional_ = new QLabel(QString::fromUtf8("名义价格"));
     labelCurrency_ = new QLabel(QString::fromUtf8("计价单位"));
     labelEffectiveDate_ = new QLabel(QString::fromUtf8("生效日"));
     labelMaturityDate_  = new QLabel(QString::fromUtf8("到期日"));
+    checkFirstExerciseDate_ = new QCheckBox(QString::fromUtf8("首次行权日"));
 
     notional_ = new QLineEdit();
     currency_ = new QComboBox();
     effectiveDate_ = new QDateEdit();
     maturityDate_  = new QDateEdit();
+    firstExerciseDate_ = new QDateEdit();
 
     // default notional
     notional_->setText("10000000");
@@ -22,12 +25,20 @@ DealInfo::DealInfo() : QWidget() {
     currency_->addItem("CNY");
     currency_->addItem("USD");
 
+    // check box status
+    checkFirstExerciseDate_->setCheckState(Qt::Unchecked);
+
     // set default QDateEdit dates
     // effective date is today and the maturity date is one
     // year later
     QDate today = QDate::currentDate();
     effectiveDate_->setDate(today);
     maturityDate_->setDate(today.addDays(365));
+    firstExerciseDate_->setDate(today);
+    firstExerciseDate_->setReadOnly(true);
+
+    // register callback
+    this->connect(checkFirstExerciseDate_, SIGNAL(stateChanged(int)), this, SLOT(checkFirstExerciseDate(int)));
 
     // layout
     layout = new QGridLayout(this);
@@ -43,6 +54,9 @@ DealInfo::DealInfo() : QWidget() {
 
     layout->addWidget(labelMaturityDate_, 4, 1, Qt::AlignLeft);
     layout->addWidget(maturityDate_, 4, 2, Qt::AlignLeft);
+
+    layout->addWidget(checkFirstExerciseDate_, 5, 1, Qt::AlignLeft);
+    layout->addWidget(firstExerciseDate_, 5, 2, Qt::AlignLeft);
 
     this->setLayout(layout);
 }
@@ -75,4 +89,20 @@ QDate DealInfo::effectiveDate() {
 
 QDate DealInfo::maturityDate() {
     return maturityDate_->date();
+}
+
+bool DealInfo::changeFirstExerciseDate() {
+    return checkFirstExerciseDate_->isChecked();
+}
+
+QDate DealInfo::firstExerciseDate() {
+    return firstExerciseDate_->date();
+}
+
+void DealInfo::checkFirstExerciseDate(int state) {
+    if (state == Qt::Checked) {
+        firstExerciseDate_->setReadOnly(false);
+    } else {
+        firstExerciseDate_->setReadOnly(true);
+    }
 }

@@ -261,16 +261,27 @@ bool isConstantModel(QString complexity) {
 }
 
 ext::shared_ptr<Exercise> getQuantLibOptionExercise(QString style,
-            ext::shared_ptr<VanillaSwap> swap, Date startDate){
+            ext::shared_ptr<VanillaSwap> swap, Date startDate,
+            bool changeFirstExerciseDate, Date firstExerciseDate){
     // Bermudan swaption
     // construct coupon dates
     std::vector<Date> bbgBermudanDates;
+    Date europeanDate = startDate;
+    int offset = 0;
     const std::vector<ext::shared_ptr<CashFlow> >& bbgLeg =
             swap->fixedLeg();
+    if (changeFirstExerciseDate) {
+        ext::shared_ptr<Coupon> coupon =
+                ext::dynamic_pointer_cast<Coupon>(bbgLeg[0]);
+        offset = firstExerciseDate - coupon->accrualStartDate();
+
+        europeanDate = firstExerciseDate;
+    }
     for (Size i=0; i<bbgLeg.size(); i++) {
         ext::shared_ptr<Coupon> coupon =
                 ext::dynamic_pointer_cast<Coupon>(bbgLeg[i]);
-        bbgBermudanDates.push_back(coupon->accrualStartDate());
+        bbgBermudanDates.push_back(coupon->accrualStartDate() + offset);
+        std::cout << "Bermudan exercise date: " << bbgBermudanDates[i] << std::endl;
     }
 
     if (style == QString::fromUtf8("百慕大期权(Bermudan)")) {
@@ -278,8 +289,9 @@ ext::shared_ptr<Exercise> getQuantLibOptionExercise(QString style,
                          new BermudanExercise(bbgBermudanDates));
     } else if (style == QString::fromUtf8("欧式期权(European)")) {
         // European option expires on the last day
+        std::cout << "European exercise date: " << europeanDate << std::endl;
         return ext::shared_ptr<Exercise>(
-                    new EuropeanExercise(startDate));
+                    new EuropeanExercise(europeanDate));
     }
 
     return ext::shared_ptr<Exercise>(NULL);
@@ -478,7 +490,7 @@ double *extractExternalVols(std::vector<std::vector<double> > &volSurface) {
 }
 
 double priceSwaption(double notional,
-        QString currency, std::string effectiveDate, std::string maturityDate,
+        QString currency, std::string effectiveDate, std::string maturityDate, bool changeFirstExerciseDate, std::string firstExerciseDate,
         QString fixedDirection, double fixedCoupon, QString fixedPayFreq, std::string fixedDayCounter,
         QString floatDirection, QString floatIndex, QString floatPayFreq, std::string floatDayCounter,
         QString style, QString position, QString callFreq,
@@ -598,6 +610,7 @@ double priceSwaption(double notional,
 
     Date startDate = DateParser::parseFormatted(effectiveDate, "%Y/%m/%d");
     Date maturity = DateParser::parseFormatted(maturityDate, "%Y/%m/%d");
+    Date firstDate = DateParser::parseFormatted(firstExerciseDate, "%Y/%m/%d");
 
     // fixed leg property
     fixedLegDayCounter = getQuantLibDayCounter(fixedDayCounter);
@@ -630,7 +643,7 @@ double priceSwaption(double notional,
 
     // construct swaption exercise
     ext::shared_ptr<Exercise> exercise = getQuantLibOptionExercise(style,
-                swap, startDate);
+                swap, startDate, changeFirstExerciseDate, firstDate);
     Swaption swaption(swap, exercise);
 
     // pricing with generalized hull white for piece-wise term structure fit

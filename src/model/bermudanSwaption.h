@@ -10,7 +10,7 @@
 #include <string>
 
 double priceSwaption(double notional,
-        QString currency, std::string effectiveDate, std::string maturityDate,
+        QString currency, std::string effectiveDate, std::string maturityDate, bool changeFirstExerciseDate, std::string firstExerciseDate,
         QString fixedDirection, double fixedCoupon, QString fixedPayFreq, std::string fixedDayCounter,
         QString floatDirection, QString floatIndex, QString floatPayFreq, std::string floatDayCounter,
         QString style, QString position, QString callFreq,

@@ -176,6 +176,8 @@ void RatesMainWindow::calculate() {
     QString currency = dealInfo_->currency();
     std::string effectiveDate = dealInfo_->effectiveDate().toString(QString::fromUtf8("yyyy/MM/dd")).toUtf8().constData();
     std::string maturityDate  = dealInfo_->maturityDate().toString(QString::fromUtf8("yyyy/MM/dd")).toUtf8().constData();
+    bool changeFirstExerciseDate = dealInfo_->changeFirstExerciseDate();
+    std::string firstExerciseDate  = dealInfo_->firstExerciseDate().toString(QString::fromUtf8("yyyy/MM/dd")).toUtf8().constData();
 
     // fix leg related information
     QString fixedDirection = fixedLegSpec_->direction();
@@ -205,7 +207,7 @@ void RatesMainWindow::calculate() {
 
     if (!useExternalVolSurface || value_.size() > 0) {
         double price = priceSwaption(notional,
-                currency, effectiveDate, maturityDate,
+                currency, effectiveDate, maturityDate, changeFirstExerciseDate, firstExerciseDate,
                 fixedDirection, fixedCoupon, fixedPayFreq, fixedDayCounter,
                 floatDirection, floatIndex, floatPayFreq, floatDayCounter,
                 style, position, callFreq,
