@@ -17,6 +17,11 @@
 #include "widgets/optionality.h"
 #include "widgets/modelInfo.h"
 
+#include <ql/time/date.hpp>
+#include <ql/time/period.hpp>
+
+using namespace QuantLib;
+
 class RatesMainWindow : public QMainWindow {
     Q_OBJECT
 public:
@@ -35,6 +40,14 @@ public:
     std::vector<std::string> getColIndex();
     std::vector<std::vector<double>> getValue();
 
+    void getOisQuoteData(std::vector<Period> &oisTenors,
+                         std::vector<double> &oisRates);
+    void getForwardQuoteData(Period &depositTenor, double &depositRate,
+                             std::vector<Date> &futuresMats,
+                             std::vector<double> &futuresPrices,
+                             std::vector<Period> &swapTenors,
+                             std::vector<double> &swapQuotes);
+
 private slots:
     void openBbg();
     void calculate();
@@ -42,18 +55,20 @@ private slots:
 private:
     void updateVolTable();
 
-    std::vector<std::string> rowIndex_;
-    std::vector<std::string> colIndex_;
-    std::vector<std::vector<double>> value_;
+    std::vector<std::string> volRowIndex_;
+    std::vector<std::string> volColIndex_;
+    std::vector<std::vector<double>> vol_;
 
-    // rate curves
-    std::vector<std::string> term_;
-    std::vector<double> marketRate_;
-    std::vector<double> shift_;
-    // shifted rate = shift + market rate
-    std::vector<double> shiftedRate_;
-    std::vector<double> zeroRate_;
-    std::vector<double> discount_;
+    // forward rate curves
+    std::vector<int> forwardTerm_;
+    std::vector<std::string> forwardUnit_;
+    std::vector<double> forwardBid_;
+    std::vector<double> forwardAsk_;
+
+    // ois rate curves
+    std::vector<int> oisTerm_;
+    std::vector<std::string> oisUnit_;
+    std::vector<double> oisValue_;
 
     // widgets
     DealInfo *dealInfo_;

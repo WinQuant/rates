@@ -11,16 +11,32 @@
 #include "widgets/mainWindow.h"
 #include "model/bermudanSwaption.h"
 
+#include <ql/time/timeunit.hpp>
+
 #include <iostream>
 
 using namespace OpenXLSX;
 
-#define CURVE_TERM_IDX 0
-#define CURVE_MARKET_RATE_IDX 1
-#define CURVE_SHIFT_IDX 2
-#define CURVE_SHIFTED_RATE_IDX 3
-#define CURVE_ZERO_RATE_IDX 4
-#define CURVE_DISCOUNT_FACTOR_IDX 5
+#define FORWARD_CURVE_TERM_IDX 0
+#define FORWARD_CURVE_UNIT_IDX 1
+#define FORWARD_CURVE_BID_IDX  8
+#define FORWARD_CURVE_ASK_IDX  9
+#define OIS_CURVE_TERM_IDX  0
+#define OIS_CURVE_UNIT_IDX  1
+#define OIS_CURVE_VALUE_IDX 13
+
+TimeUnit getTimeUnit(std::string tu) {
+    TimeUnit t = Years;
+    if (tu == "DY") {
+        t = Days;
+    } else if (tu == "WK") {
+        t = Weeks;
+    } else if (tu == "MO") {
+        t = Months;
+    }
+
+    return t;
+}
 
 RatesMainWindow::~RatesMainWindow() {}
 
@@ -38,15 +54,47 @@ void RatesMainWindow::setVolTableWidget(QTableWidget *volTable) {
 }
 
 std::vector<std::string> RatesMainWindow::getRowIndex() {
-    return rowIndex_;
+    return volRowIndex_;
 }
 
 std::vector<std::string> RatesMainWindow::getColIndex() {
-    return colIndex_;
+    return volColIndex_;
 }
 
 std::vector<std::vector<double>> RatesMainWindow::getValue() {
-    return value_;
+    return vol_;
+}
+
+void RatesMainWindow::getOisQuoteData(std::vector<Period> &oisTenors,
+            std::vector<double> &oisRates) {
+    for (int i = 0; i < oisTerm_.size(); i++) {
+        Period p(oisTerm_[i], getTimeUnit(oisUnit_[i]));
+        oisTenors.push_back(p);
+        oisRates.push_back(oisValue_[i]);
+    }
+}
+
+void getForwardQuoteData(Period &depositTenor, double &depositRate,
+                         std::vector<Date> &futuresMats,
+                         std::vector<double> &futuresPrices,
+                         std::vector<Period> &swapTenors,
+                         std::vector<double> &swapQuotes) {
+    for (int i = 0; i < forwardTerm_.size(); i++) {
+        double value = 0.5 * (forwardBid_[i] + forwardAsk_[i]);
+        if (i == 0) {
+            depositTenor = Period(forwardTerm_[i], getTimeUnit(forwardUnit_[i]));
+            depositRate = value;
+        } else if (forwardUnit_[i] == "ACTDATE") {
+            int dnum = forwardTerm_[i];
+            Date d(dnum % 100, (dum % 10000) / 100, dum / 10000);
+            futuresMats.push_back(d);
+            futuresPrices.push_back(value);
+        } else {
+            Period p(forwardTerm_[i], forwardUnit_[i]);
+            swapTenors.push_back(p);
+            swapQuotes.push_back(value);
+        }
+    }
 }
 
 template<typename T> void readColumn(
@@ -56,6 +104,10 @@ template<typename T> void readColumn(
 
     // skip header
     for (int i = 1; i < rowCount; i++) {
+        std::cout << i << " "
+                  << columnIndex << " "
+                  << sheet.Cell(i + 1, columnIndex + 1).Value().Get<T>()
+                  << std::endl;
         data.push_back(sheet.Cell(i + 1, columnIndex + 1).Value().Get<T>());
     }
 }
@@ -73,45 +125,52 @@ void RatesMainWindow::openBbg() {
     int colCount = sheet.ColumnCount();
 
     // re-construct vector
-    rowIndex_.clear();
-    colIndex_.clear();
-    value_.clear();
+    volRowIndex_.clear();
+    volColIndex_.clear();
+    vol_.clear();
 
     for (int i = 0; i < rowCount - 1; i++)
-        value_.push_back(std::vector<double>(colCount - 1));
+        vol_.push_back(std::vector<double>(colCount - 1));
 
     // the first column is the row index and the first row is the col index
     for (int i = 0; i < rowCount; i++) {
         for (int j = 0; j < colCount; j++) {
             if ((i > 0) || (j > 0)) {
                 if ((i == 0) && (j > 0)) {
-                    colIndex_.push_back(
+                    volColIndex_.push_back(
                             sheet.Cell(i + 1, j + 1).Value().Get<std::string>());
                 } else if (( i > 0) && (j == 0)) {
-                    rowIndex_.push_back(
+                    volRowIndex_.push_back(
                             sheet.Cell(i + 1, j + 1).Value().Get<std::string>());
                 } else {
                     try {
-                        value_[i - 1][j - 1] = sheet.Cell(i + 1, j + 1).Value().Get<double>();
+                        vol_[i - 1][j - 1] = sheet.Cell(i + 1, j + 1).Value().Get<double>();
                     } catch ( OpenXLSX::XLException e ) {
-                        value_[i - 1][j - 1] = sheet.Cell(i + 1, j + 1).Value().Get<int>();
+                        vol_[i - 1][j - 1] = sheet.Cell(i + 1, j + 1).Value().Get<int>();
                     }
                     std::cout << i << " " << j << std::endl;
-                    std::cout << value_[i - 1][j - 1] << std::endl;
+                    std::cout << vol_[i - 1][j - 1] << std::endl;
                 }
             }
         }
     }
     
     // load curve
-    XLWorksheet curves = workbook.Worksheet("Forward");
-    rowCount = curves.RowCount();
-    readColumn<std::string>(curves, CURVE_TERM_IDX, rowCount, term_);
-    readColumn<double>(curves, CURVE_MARKET_RATE_IDX, rowCount, marketRate_);
-    // readColumn<double>(curves, CURVE_SHIFT_IDX, rowCount, shift_);
-    readColumn<double>(curves, CURVE_SHIFTED_RATE_IDX, rowCount, shiftedRate_);
-    readColumn<double>(curves, CURVE_ZERO_RATE_IDX, rowCount, zeroRate_);
-    readColumn<double>(curves, CURVE_DISCOUNT_FACTOR_IDX, rowCount, discount_);
+    XLWorksheet forwards = workbook.Worksheet("Forward");
+    rowCount = forwards.RowCount();
+    std::cout << "Forward row count " << rowCount << std::endl;
+    readColumn<int>(forwards, FORWARD_CURVE_TERM_IDX, rowCount, forwardTerm_);
+    readColumn<std::string>(forwards, FORWARD_CURVE_UNIT_IDX, rowCount, forwardUnit_);
+    readColumn<double>(forwards, FORWARD_CURVE_BID_IDX, rowCount, forwardBid_);
+    readColumn<double>(forwards, FORWARD_CURVE_ASK_IDX, rowCount, forwardAsk_);
+
+    // ois curve
+    XLWorksheet ois = workbook.Worksheet("OIS");
+    rowCount = ois.RowCount();
+    readColumn<int>(ois, OIS_CURVE_TERM_IDX, rowCount, oisTerm_);
+    readColumn<std::string>(ois, OIS_CURVE_UNIT_IDX, rowCount, oisUnit_);
+    readColumn<double>(ois, OIS_CURVE_VALUE_IDX, rowCount, oisValue_);
+
     std::cout << "Read file done." << std::endl;
     // notify the vol table value changes
     updateVolTable();
@@ -122,26 +181,26 @@ void RatesMainWindow::updateVolTable() {
     volTable_->setRowCount(0);
     volTable_->setColumnCount(0);
 
-    volTable_->setRowCount(rowIndex_.size());
-    volTable_->setColumnCount(colIndex_.size());
+    volTable_->setRowCount(volRowIndex_.size());
+    volTable_->setColumnCount(volColIndex_.size());
 
     // update new contents
 
-    for (unsigned long i = 0; i < colIndex_.size(); i++) {
+    for (unsigned long i = 0; i < volColIndex_.size(); i++) {
         volTable_->setHorizontalHeaderItem(i,
                 new QTableWidgetItem(
-                        QString::fromUtf8(colIndex_[i].c_str())));
+                        QString::fromUtf8(volColIndex_[i].c_str())));
     }
-    for (unsigned long i = 0; i < rowIndex_.size(); i++) {
+    for (unsigned long i = 0; i < volRowIndex_.size(); i++) {
         volTable_->setVerticalHeaderItem(i,
                 new QTableWidgetItem(
-                    QString::fromUtf8(rowIndex_[i].c_str())));
+                    QString::fromUtf8(volRowIndex_[i].c_str())));
     }
 
-    for (unsigned long i = 0; i < rowIndex_.size(); i++) {
-        for (unsigned long j = 0; j < colIndex_.size(); j++) {
+    for (unsigned long i = 0; i < volRowIndex_.size(); i++) {
+        for (unsigned long j = 0; j < volColIndex_.size(); j++) {
             volTable_->setItem(i, j, new QTableWidgetItem(
-                        QString::number(value_[i][j], 'g', 4)));
+                        QString::number(vol_[i][j], 'g', 4)));
         }
     }
 }
@@ -203,14 +262,14 @@ void RatesMainWindow::calculate() {
 
     bool useExternalVolSurface = modelInfo_->isExternalVolSurface();
 
-    if (!useExternalVolSurface || value_.size() > 0) {
+    if (!useExternalVolSurface || vol_.size() > 0) {
         double price = priceSwaption(notional,
                 currency, effectiveDate, maturityDate, changeFirstExerciseDate, firstExerciseDate,
                 fixedDirection, fixedCoupon, fixedPayFreq, fixedDayCounter,
                 floatDirection, floatIndex, floatPayFreq, floatDayCounter,
                 style, position, callFreq,
                 pricingDate, model, engine, complexity, curve,
-                useExternalVolSurface, value_);
+                useExternalVolSurface, vol_);
         modelInfo_->setPrice(price / notional, price);
     } else {
         // no vol surface loaded, alert.

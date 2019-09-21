@@ -32,7 +32,6 @@
 #include <ql/math/solvers1d/ridder.hpp>
 
 #include <ql/cashflows/coupon.hpp>
-#include <ql/time/calendars/target.hpp>
 #include <ql/utilities/dataparsers.hpp>
 
 #include <ql/experimental/shortrate/generalizedhullwhite.hpp>
@@ -489,10 +488,10 @@ double *extractExternalVols(std::vector<std::vector<double> > &volSurface) {
     return vols;
 }
 
-void bootstrapIrTermStructure(int nOis, Period *oisTenor, double *oisRates,
+void bootstrapIrTermStructure(const std::vector<Period> &oisTenors, const std::vector<double> &oisRates,
             Period depositTenor, double depositRate,
-            int nFuturesPrices, Date *futuresMaturities, double *futuresPrices,
-            int nSwapQuotes, Period *swapTenors, double *swapQuotes,
+            const std::vector<Date> &futuresMaturities, const std::vector<double> &futuresPrices,
+            const std::vector<Period> &swapTenors, const std::vector<double> &swapQuotes,
             int settlementDays, Calendar calendar, Date settlementDate,
             DayCounter dayCounter, ext::shared_ptr<IborIndex> liborIndex,
             bool endOfMonth, bool useDualCurve,
@@ -508,7 +507,7 @@ void bootstrapIrTermStructure(int nOis, Period *oisTenor, double *oisRates,
                                                     new SimpleQuote(oisRates[ 0 ] / 100))),
                                             Period(1, Days), settlementDays, calendar,
                                             ModifiedFollowing, endOfMonth, oisDayCounter ) ) );
-    for (unsigned long i = 1; i < nOis; i++) {
+    for (unsigned long i = 1; i < oisTenors.size(); i++) {
         oisHelper.push_back( ext::shared_ptr<ZeroYield::helper>(
                         new OISRateHelper(
                                 settlementDays, oisTenors[ i ],
@@ -530,19 +529,19 @@ void bootstrapIrTermStructure(int nOis, Period *oisTenor, double *oisRates,
                                                 cashDayCounter ) ) );
     // futures prices represent 3m-2y futures rate
     DayCounter futuresDayCounter = Actual360();
-    for (unsigned long i = 0; i < nFuturesPrices; i++) {
+    for (unsigned long i = 0; i < futuresMaturities.size(); i++) {
         depositHelper.push_back( ext::shared_ptr<ZeroYield::helper>(
                                         new FuturesRateHelper(
                                             Handle<Quote>(ext::shared_ptr<Quote>(
                                                     new SimpleQuote(futuresPrices[i]))),
-                                                futuresMats[i], 3, calendar,
+                                                futuresMaturities[i], 3, calendar,
                                                 ModifiedFollowing, endOfMonth,
                                                 futuresDayCounter,
                                             Handle<Quote>(ext::shared_ptr<SimpleQuote>(new SimpleQuote(0.0))) ) ) );
     }
 
     // swap quotes
-    for (unsigned long i = 0; i < nSwapQuotes; i++) {
+    for (unsigned long i = 0; i < swapQuotes.size(); i++) {
         depositHelper.push_back( ext::shared_ptr<ZeroYield::helper>(
                                     new SwapRateHelper(
                                         Handle<Quote>(ext::shared_ptr<Quote>(
@@ -604,10 +603,17 @@ double priceSwaption(double notional,
 
     bool useDualCurve = isDualCurve(curve);
 
-    bootstrapIrTermStructure(sizeof(oisRates) / sizeof(oisRates[0]), oisTenors, oisRates,
+    // construct input to the bootstrap
+    std::vector<Period> vecOisTenors(std::begin(oisTenors), std::end(oisTenors));
+    std::vector<double> vecOisRates(std::begin(oisRates), std::end(oisRates));
+    std::vector<Date> vecFuturesMaturities(std::begin(futuresMats), std::end(futuresMats));
+    std::vector<double> vecFuturesPrices(std::begin(futuresPrices), std::end(futuresPrices));
+    std::vector<Period> vecSwapTenors(std::begin(swapTenors), std::end(swapTenors));
+    std::vector<double> vecSwapQuotes(std::begin(swapQuotes), std::end(swapQuotes));
+    bootstrapIrTermStructure(vecOisTenors, vecOisRates,
             depositTenor, depositRate,
-            sizeof(futuresPrices) / sizeof(futuresPrices[0]), futuresMats, futuresPrices,
-            sizeof(swapQuotes) / sizeof(swapQuotes[0]), swapTenors, swapQuotes,
+            vecFuturesMaturities, vecFuturesPrices,
+            vecSwapTenors, vecSwapQuotes,
             settlementDays, calendar, settlementDate, fixedLegDayCounter, liborIndex,
             endOfMonth, useDualCurve,
             discountTermStructure, forecastTermStructure);

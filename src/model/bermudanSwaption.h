@@ -7,12 +7,25 @@
 
 #include <QString>
 
-#include <string>
+#include <ql/indexes/ibor/usdlibor.hpp>
+#include <ql/qldefines.hpp>
+#include <ql/time/calendar.hpp>
+#include <ql/time/date.hpp>
+#include <ql/time/daycounter.hpp>
+#include <ql/time/period.hpp>
 
-void bootstrapIrTermStructure(int nOis, Period *oisTenor, double *oisRates,
+#include <ql/termstructures/yield/piecewiseyieldcurve.hpp>
+#include <ql/termstructures/yield/zeroyieldstructure.hpp>
+
+#include <string>
+#include <vector>
+
+using namespace QuantLib;
+
+void bootstrapIrTermStructure(const std::vector<Period> &oisTenors, const std::vector<double> &oisRates,
             Period depositTenor, double depositRate,
-            int nFuturesPrices, Date *futuresMaturities, double *futuresPrices,
-            int nSwapQuotes, Period *swapTenors, double *swapQuotes,
+            const std::vector<Date> &futuresMaturities, const std::vector<double> &futuresPrices,
+            const std::vector<Period> &swapTenors, const std::vector<double> &swapQuotes,
             int settlementDays, Calendar calendar, Date settlementDate,
             DayCounter dayCounter, ext::shared_ptr<IborIndex> liborIndex,
             bool endOfMonth, bool useDualCurve,
