@@ -90,48 +90,6 @@ double liborDiscountingVols[] = {
     0.3454, 0.3361, 0.3265,
     0.3115 };
 
-Period oisTenors[] = {
-    Period( 1, Days ),  Period( 1, Weeks ),   Period( 2, Weeks ),
-    Period( 3, Weeks ), Period( 1, Months ),  Period( 2, Months ),
-    Period( 3, Months ), Period( 4, Months ), Period( 5, Months ),
-    Period( 6, Months ), Period( 9, Months ), Period( 12, Months ),
-    Period( 18, Months ), Period( 2, Years ), Period( 3, Years ),
-    Period( 4, Years ),  Period( 5, Years ),  Period( 7, Years ),
-    Period( 10, Years ), Period( 12, Years ), Period( 15, Years ),
-    Period( 20, Years ), Period( 25, Years ), Period( 30, Years ),
-    Period( 40, Years ), Period( 50, Years ) };
-
-// forecast forward rate
-double oisRates[] = {
-    2.4100, 2.3879, 2.3885, 2.2890,
-    2.2140, 2.1530, 2.0760, 2.0210, 1.9770, 1.9310, 1.8420, 1.7790,
-    1.6760, 1.6200, 1.5820, 1.5840, 1.6040, 1.9211, 2.0390, 2.1035,
-    2.1717, 2.2360, 2.2591, 2.2665, 2.2498, 2.2188 };
-
-Period depositTenor(3, Months);
-double depositRate = 0.0229963;
-
-Date futuresMats[] = {
-    Date(18, September, 2019), Date(18, December, 2019),
-    Date(18, March, 2020),     Date(17, June, 2020),
-    Date(16, September, 2020), Date(16, December, 2020) };
-
-double futuresPrices[] = {
-    97.92, 97.99, 98.17, 98.255, 98.315, 98.305 };
-
-Period swapTenors[] = {
-    Period( 2, Years ),  Period( 3, Years ),  Period( 4, Years ),
-    Period( 5, Years ),  Period( 6, Years ),  Period( 7, Years ),
-    Period( 8, Years ),  Period( 9, Years ),  Period( 10, Years ),
-    Period( 11, Years ), Period( 12, Years ), Period( 15, Years ),
-    Period( 20, Years ), Period( 25, Years ), Period( 30, Years ),
-    Period( 40, Years ), Period( 50, Years ) };
-
-double swapQuotes[] = {
-    0.018799, 0.018327, 0.018291, 0.018500, 0.018840, 0.019211,
-    0.019608, 0.020005, 0.020390, 0.020730, 0.021035, 0.021717,
-    0.022360, 0.022591, 0.022665, 0.022498, 0.022188 };
-
 void bbgCalibrateModel(
           const double *bsImpliedVols,
           const ext::shared_ptr<ShortRateModel>& model,
@@ -504,7 +462,7 @@ void bootstrapIrTermStructure(const std::vector<Period> &oisTenors, const std::v
                                     new DepositRateHelper(
                                         Handle<Quote>(
                                                 ext::shared_ptr<Quote>(
-                                                    new SimpleQuote(oisRates[ 0 ] / 100))),
+                                                    new SimpleQuote(oisRates[ 0 ]))),
                                             Period(1, Days), settlementDays, calendar,
                                             ModifiedFollowing, endOfMonth, oisDayCounter ) ) );
     for (unsigned long i = 1; i < oisTenors.size(); i++) {
@@ -513,7 +471,7 @@ void bootstrapIrTermStructure(const std::vector<Period> &oisTenors, const std::v
                                 settlementDays, oisTenors[ i ],
                                 Handle<Quote>(
                                     ext::shared_ptr<Quote>(
-                                        new SimpleQuote( oisRates[ i ] / 100 )) ),
+                                        new SimpleQuote( oisRates[ i ] )) ),
                                 ext::shared_ptr<OvernightIndex>(new FedFunds()) ) ) );
     }
 
@@ -577,7 +535,11 @@ double priceSwaption(double notional,
         QString style, QString position, QString callFreq,
         std::string today, QString model, QString engine,
         QString complexity, QString curve, bool useExternalVolSurface,
-        std::vector<std::vector<double> > &volSurface) {
+        std::vector<std::vector<double> > &volSurface,
+        std::vector<Period> &oisTenors, std::vector<double> &oisRates,
+        Period depositTenor, double depositRate,
+        std::vector<Date> &futuresMaturities, std::vector<double> &futuresPrices,
+        std::vector<Period> &swapTenors, std::vector<double> &swapQuotes) {
     // unused arguments
     currency = currency;
     floatDirection  = floatDirection;
@@ -604,16 +566,10 @@ double priceSwaption(double notional,
     bool useDualCurve = isDualCurve(curve);
 
     // construct input to the bootstrap
-    std::vector<Period> vecOisTenors(std::begin(oisTenors), std::end(oisTenors));
-    std::vector<double> vecOisRates(std::begin(oisRates), std::end(oisRates));
-    std::vector<Date> vecFuturesMaturities(std::begin(futuresMats), std::end(futuresMats));
-    std::vector<double> vecFuturesPrices(std::begin(futuresPrices), std::end(futuresPrices));
-    std::vector<Period> vecSwapTenors(std::begin(swapTenors), std::end(swapTenors));
-    std::vector<double> vecSwapQuotes(std::begin(swapQuotes), std::end(swapQuotes));
-    bootstrapIrTermStructure(vecOisTenors, vecOisRates,
+    bootstrapIrTermStructure(oisTenors, oisRates,
             depositTenor, depositRate,
-            vecFuturesMaturities, vecFuturesPrices,
-            vecSwapTenors, vecSwapQuotes,
+            futuresMaturities, futuresPrices,
+            swapTenors, swapQuotes,
             settlementDays, calendar, settlementDate, fixedLegDayCounter, liborIndex,
             endOfMonth, useDualCurve,
             discountTermStructure, forecastTermStructure);

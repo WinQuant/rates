@@ -68,7 +68,8 @@ private:
     // ois rate curves
     std::vector<int> oisTerm_;
     std::vector<std::string> oisUnit_;
-    std::vector<double> oisValue_;
+    std::vector<double> oisBid_;
+    std::vector<double> oisAsk_;
 
     // widgets
     DealInfo *dealInfo_;

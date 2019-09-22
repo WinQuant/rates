@@ -23,7 +23,50 @@ using namespace OpenXLSX;
 #define FORWARD_CURVE_ASK_IDX  9
 #define OIS_CURVE_TERM_IDX  0
 #define OIS_CURVE_UNIT_IDX  1
-#define OIS_CURVE_VALUE_IDX 13
+#define OIS_CURVE_BID_IDX   3
+#define OIS_CURVE_ASK_IDX   4
+
+Period OIS_TENORS[] = {
+    Period( 1, Days ),  Period( 1, Weeks ),   Period( 2, Weeks ),
+    Period( 3, Weeks ), Period( 1, Months ),  Period( 2, Months ),
+    Period( 3, Months ), Period( 4, Months ), Period( 5, Months ),
+    Period( 6, Months ), Period( 9, Months ), Period( 12, Months ),
+    Period( 18, Months ), Period( 2, Years ), Period( 3, Years ),
+    Period( 4, Years ),  Period( 5, Years ),  Period( 7, Years ),
+    Period( 10, Years ), Period( 12, Years ), Period( 15, Years ),
+    Period( 20, Years ), Period( 25, Years ), Period( 30, Years ),
+    Period( 40, Years ), Period( 50, Years ) };
+
+// forecast forward rate
+double OIS_RATES[] = {
+    0.0241, 0.023879, 0.023885, 0.022890,
+    0.022140, 0.021530, 0.02760, 0.020210, 0.019770, 0.019310, 0.018420, 0.017790,
+    0.016760, 0.016200, 0.015820, 0.015840, 0.016040, 0.019211, 0.020390, 0.021035,
+    0.021717, 0.022360, 0.022591, 0.022665, 0.022498, 0.022188 };
+
+Period DEPOSIT_TENOR(3, Months);
+double DEPOSIT_RATE = 0.0229963;
+
+Date FUTURES_MATURITIES[] = {
+    Date(18, September, 2019), Date(18, December, 2019),
+    Date(18, March, 2020),     Date(17, June, 2020),
+    Date(16, September, 2020), Date(16, December, 2020) };
+
+double FUTURES_PRICES[] = {
+    97.92, 97.99, 98.17, 98.255, 98.315, 98.305 };
+
+Period SWAP_TENORS[] = {
+    Period( 2, Years ),  Period( 3, Years ),  Period( 4, Years ),
+    Period( 5, Years ),  Period( 6, Years ),  Period( 7, Years ),
+    Period( 8, Years ),  Period( 9, Years ),  Period( 10, Years ),
+    Period( 11, Years ), Period( 12, Years ), Period( 15, Years ),
+    Period( 20, Years ), Period( 25, Years ), Period( 30, Years ),
+    Period( 40, Years ), Period( 50, Years ) };
+
+double SWAP_QUOTES[] = {
+    0.018799, 0.018327, 0.018291, 0.018500, 0.018840, 0.019211,
+    0.019608, 0.020005, 0.020390, 0.020730, 0.021035, 0.021717,
+    0.022360, 0.022591, 0.022665, 0.022498, 0.022188 };
 
 TimeUnit getTimeUnit(std::string tu) {
     TimeUnit t = Years;
@@ -67,30 +110,33 @@ std::vector<std::vector<double>> RatesMainWindow::getValue() {
 
 void RatesMainWindow::getOisQuoteData(std::vector<Period> &oisTenors,
             std::vector<double> &oisRates) {
-    for (int i = 0; i < oisTerm_.size(); i++) {
+    for (unsigned int i = 0; i < oisTerm_.size(); i++) {
         Period p(oisTerm_[i], getTimeUnit(oisUnit_[i]));
         oisTenors.push_back(p);
-        oisRates.push_back(oisValue_[i]);
+        oisRates.push_back(0.5 * (oisBid_[i] + oisAsk_[i]) * 0.01);
     }
 }
 
-void getForwardQuoteData(Period &depositTenor, double &depositRate,
-                         std::vector<Date> &futuresMats,
-                         std::vector<double> &futuresPrices,
-                         std::vector<Period> &swapTenors,
-                         std::vector<double> &swapQuotes) {
-    for (int i = 0; i < forwardTerm_.size(); i++) {
-        double value = 0.5 * (forwardBid_[i] + forwardAsk_[i]);
+void RatesMainWindow::getForwardQuoteData(
+            Period &depositTenor, double &depositRate,
+            std::vector<Date> &futuresMats,
+            std::vector<double> &futuresPrices,
+            std::vector<Period> &swapTenors,
+            std::vector<double> &swapQuotes) {
+    for (unsigned int i = 0; i < forwardTerm_.size(); i++) {
+        double value = 0.5 * (forwardBid_[i] + forwardAsk_[i]) / 100;
         if (i == 0) {
             depositTenor = Period(forwardTerm_[i], getTimeUnit(forwardUnit_[i]));
             depositRate = value;
         } else if (forwardUnit_[i] == "ACTDATE") {
             int dnum = forwardTerm_[i];
-            Date d(dnum % 100, (dum % 10000) / 100, dum / 10000);
+            Date d(Day(dnum % 100),
+                   Month((dnum % 10000) / 100),
+                   Year(dnum / 10000));
             futuresMats.push_back(d);
-            futuresPrices.push_back(value);
+            futuresPrices.push_back(100 - value * 100);
         } else {
-            Period p(forwardTerm_[i], forwardUnit_[i]);
+            Period p(forwardTerm_[i], getTimeUnit(forwardUnit_[i]));
             swapTenors.push_back(p);
             swapQuotes.push_back(value);
         }
@@ -169,7 +215,8 @@ void RatesMainWindow::openBbg() {
     rowCount = ois.RowCount();
     readColumn<int>(ois, OIS_CURVE_TERM_IDX, rowCount, oisTerm_);
     readColumn<std::string>(ois, OIS_CURVE_UNIT_IDX, rowCount, oisUnit_);
-    readColumn<double>(ois, OIS_CURVE_VALUE_IDX, rowCount, oisValue_);
+    readColumn<double>(ois, OIS_CURVE_BID_IDX, rowCount, oisBid_);
+    readColumn<double>(ois, OIS_CURVE_ASK_IDX, rowCount, oisAsk_);
 
     std::cout << "Read file done." << std::endl;
     // notify the vol table value changes
@@ -260,21 +307,57 @@ void RatesMainWindow::calculate() {
     QString complexity = modelInfo_->complexity();
     QString curve = modelInfo_->curve();
 
+    // prepare interest rate curve
+    std::vector<Period> oisTenors;
+    std::vector<double> oisRates;
+    Period depositTenor;
+    double depositRate;
+    std::vector<Date> futuresMaturities;
+    std::vector<double> futuresPrices;
+    std::vector<Period> swapTenors;
+    std::vector<double> swapQuotes;
+    
     bool useExternalVolSurface = modelInfo_->isExternalVolSurface();
+    if (!useExternalVolSurface) {
+        oisTenors.insert(oisTenors.begin(),
+            std::begin(OIS_TENORS), std::end(OIS_TENORS));
+        oisRates.insert(oisRates.begin(),
+            std::begin(OIS_RATES), std::end(OIS_RATES));
+        depositTenor = DEPOSIT_TENOR;
+        depositRate  = DEPOSIT_RATE;
+        futuresMaturities.insert(futuresMaturities.begin(),
+            std::begin(FUTURES_MATURITIES), std::end(FUTURES_MATURITIES));
+        futuresPrices.insert(futuresPrices.begin(),
+            std::begin(FUTURES_PRICES), std::end(FUTURES_PRICES));
+        swapTenors.insert(swapTenors.begin(),
+            std::begin(SWAP_TENORS), std::end(SWAP_TENORS));
+        swapQuotes.insert(swapQuotes.begin(),
+            std::begin(SWAP_QUOTES), std::end(SWAP_QUOTES));
+    } else if (vol_.size() > 0) {
+        getOisQuoteData(oisTenors, oisRates);
+        getForwardQuoteData(depositTenor, depositRate,
+                    futuresMaturities, futuresPrices,
+                    swapTenors, swapQuotes);
+    } else {
+        // no vol surface loaded, alert.
+        QMessageBox::critical(this, QString::fromUtf8("未加载波动率曲面"),
+                    QString::fromUtf8("请先加载波动率曲面！"),
+                               QMessageBox::Ok);
+    }
 
     if (!useExternalVolSurface || vol_.size() > 0) {
+        for (unsigned int i = 0; i < futuresMaturities.size(); i++ ) {
+            std::cout << futuresMaturities[ i ] << " " << futuresPrices[ i ] << std::endl;
+        }
         double price = priceSwaption(notional,
                 currency, effectiveDate, maturityDate, changeFirstExerciseDate, firstExerciseDate,
                 fixedDirection, fixedCoupon, fixedPayFreq, fixedDayCounter,
                 floatDirection, floatIndex, floatPayFreq, floatDayCounter,
                 style, position, callFreq,
                 pricingDate, model, engine, complexity, curve,
-                useExternalVolSurface, vol_);
+                useExternalVolSurface, vol_,
+                oisTenors, oisRates,
+                depositTenor, depositRate, futuresMaturities, futuresPrices, swapTenors, swapQuotes);
         modelInfo_->setPrice(price / notional, price);
-    } else {
-        // no vol surface loaded, alert.
-        QMessageBox::critical(this, QString::fromUtf8("未加载波动率曲面"),
-                    QString::fromUtf8("请先加载波动率曲面！"),
-                               QMessageBox::Ok);
     }
 }

@@ -39,6 +39,10 @@ double priceSwaption(double notional,
         QString style, QString position, QString callFreq,
         std::string today, QString model, QString engine,
         QString complexity, QString curve, bool useExternalVolSurface,
-        std::vector<std::vector<double> > &volSurface);
+        std::vector<std::vector<double> > &volSurface,
+        std::vector<Period> &oisTenors, std::vector<double> &oisRates,
+        Period depositTenor, double depositRate,
+        std::vector<Date> &futuresMaturities, std::vector<double> &futuresPrices,
+        std::vector<Period> &swapTenors, std::vector<double> &swapQuotes);
 
 #endif
