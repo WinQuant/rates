@@ -17,6 +17,7 @@
 #include <ql/utilities/dataparsers.hpp>
 
 #include <iostream>
+#include <fstream>
 
 using namespace OpenXLSX;
 
@@ -93,11 +94,22 @@ RatesMainWindow::~RatesMainWindow() {}
 
 void RatesMainWindow::setupMenu() {
     QMenuBar *menuBar = this->menuBar();
+    // open file
     QAction *openAction = new QAction(QString::fromUtf8("打开数据文件"), this);
     connect(openAction, SIGNAL(triggered()), this, SLOT(openBbg()));
 
+    // save OIS
+    QAction *saveOisAction = new QAction(QString::fromUtf8("保存OIS曲线"), this);
+    connect(saveOisAction, SIGNAL(triggered()), this, SLOT(saveOis()));
+
+    // save forecast
+    QAction *saveForecastAction = new QAction(QString::fromUtf8("保存远期曲线"), this);
+    connect(saveForecastAction, SIGNAL(triggered()), this, SLOT(saveForecast()));
+
     QMenu *fileMenu = menuBar->addMenu(QString::fromUtf8("文件"));
     fileMenu->addAction(openAction);
+    fileMenu->addAction(saveOisAction);
+    fileMenu->addAction(saveForecastAction);
 }
 
 void RatesMainWindow::setVolTableWidget(QTableWidget *volTable) {
@@ -286,6 +298,48 @@ void RatesMainWindow::openBbg() {
                 forecastTermStructure);
 }
 
+void RatesMainWindow::saveOis() {
+    // select a file
+    QString filename = QFileDialog::getSaveFileName(
+            this, QString::fromUtf8("打开文件"), "doc", "CSV (*.csv)");
+    std::ofstream output(filename.toUtf8().constData());
+    output << "date,discount factor" << std::endl;
+    unsigned int rowCount = oisCurveTable_->rowCount();
+    unsigned int colCount = oisCurveTable_->columnCount();
+    for (unsigned int i = 0; i < rowCount; i++) {
+        for (unsigned int j = 0; j < colCount; j++) {
+            output << oisCurveTable_->item(i, j)->text().toUtf8().constData();
+            if (j < colCount - 1)
+                output << ",";
+            else
+                output << std::endl;
+        }
+    }
+
+    output.close();
+}
+
+void RatesMainWindow::saveForecast() {
+    // select a file
+    QString filename = QFileDialog::getSaveFileName(
+            this, QString::fromUtf8("打开文件"), "doc", "CSV (*.csv)");
+    std::ofstream output(filename.toUtf8().constData());
+    output << "date,discount factor" << std::endl;
+    unsigned int rowCount = forwardCurveTable_->rowCount();
+    unsigned int colCount = forwardCurveTable_->columnCount();
+    for (unsigned int i = 0; i < rowCount; i++) {
+        for (unsigned int j = 0; j < colCount; j++) {
+            output << forwardCurveTable_->item(i, j)->text().toUtf8().constData();
+            if (j < colCount - 1)
+                output << ",";
+            else
+                output << std::endl;
+        }
+    }
+
+    output.close();
+}
+
 void RatesMainWindow::updateVolTable() {
     // erase old data
     volTable_->setRowCount(0);
@@ -345,7 +399,6 @@ void RatesMainWindow::updateOisTable(Date startDate, Calendar calendar,
         date2string(buffer, d);
         oisCurveTable_->setItem(i, 0, new QTableWidgetItem(
                     QString::fromUtf8(buffer)));
-        std::cout << i << " " << disc << std::endl;
         oisCurveTable_->setItem(i, 1, new QTableWidgetItem(
                     QString::number(disc, 'g', 4)));
     }
@@ -391,7 +444,6 @@ void RatesMainWindow::updateForwardTable(Date startDate,
     forwardCurveTable_->setItem(1, 1, new QTableWidgetItem(
                 QString::number(disc, 'g', 4)));
     // futures discount rate
-    std::cout << futuresLength << std::endl;
     for (unsigned int i = 0; i < futuresLength; i++) {
         date2string(buffer, futuresMaturities[i]);
         forwardCurveTable_->setItem(i + 2, 0, new QTableWidgetItem(
@@ -507,9 +559,6 @@ void RatesMainWindow::calculate() {
     }
 
     if (!useExternalVolSurface || vol_.size() > 0) {
-        for (unsigned int i = 0; i < futuresMaturities.size(); i++ ) {
-            std::cout << futuresMaturities[ i ] << " " << futuresPrices[ i ] << std::endl;
-        }
         double price = priceSwaption(notional,
                 currency, effectiveDate, maturityDate, changeFirstExerciseDate, firstExerciseDate,
                 fixedDirection, fixedCoupon, fixedPayFreq, fixedDayCounter,

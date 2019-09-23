@@ -22,7 +22,7 @@ static const uint qt_meta_data_RatesMainWindow[] = {
        6,       // revision
        0,       // classname
        0,    0, // classinfo
-       2,   14, // methods
+       4,   14, // methods
        0,    0, // properties
        0,    0, // enums/sets
        0,    0, // constructors
@@ -32,12 +32,15 @@ static const uint qt_meta_data_RatesMainWindow[] = {
  // slots: signature, parameters, type, tag, flags
       17,   16,   16,   16, 0x08,
       27,   16,   16,   16, 0x08,
+      37,   16,   16,   16, 0x08,
+      52,   16,   16,   16, 0x08,
 
        0        // eod
 };
 
 static const char qt_meta_stringdata_RatesMainWindow[] = {
-    "RatesMainWindow\0\0openBbg()\0calculate()\0"
+    "RatesMainWindow\0\0openBbg()\0saveOis()\0"
+    "saveForecast()\0calculate()\0"
 };
 
 void RatesMainWindow::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, void **_a)
@@ -47,7 +50,9 @@ void RatesMainWindow::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int 
         RatesMainWindow *_t = static_cast<RatesMainWindow *>(_o);
         switch (_id) {
         case 0: _t->openBbg(); break;
-        case 1: _t->calculate(); break;
+        case 1: _t->saveOis(); break;
+        case 2: _t->saveForecast(); break;
+        case 3: _t->calculate(); break;
         default: ;
         }
     }
@@ -86,9 +91,9 @@ int RatesMainWindow::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
     if (_id < 0)
         return _id;
     if (_c == QMetaObject::InvokeMetaMethod) {
-        if (_id < 2)
+        if (_id < 4)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 2;
+        _id -= 4;
     }
     return _id;
 }

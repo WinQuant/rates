@@ -54,6 +54,8 @@ public:
 
 private slots:
     void openBbg();
+    void saveOis();
+    void saveForecast();
     void calculate();
 
 private:
