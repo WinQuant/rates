@@ -11,7 +11,10 @@
 #include "widgets/mainWindow.h"
 #include "model/bermudanSwaption.h"
 
+#include <ql/time/calendars/target.hpp>
+#include <ql/time/daycounters/thirty360.hpp>
 #include <ql/time/timeunit.hpp>
+#include <ql/utilities/dataparsers.hpp>
 
 #include <iostream>
 
@@ -81,6 +84,11 @@ TimeUnit getTimeUnit(std::string tu) {
     return t;
 }
 
+int date2string(char *buffer, Date d) {
+    return sprintf(buffer, "%d-%02d-%02d", d.year(), d.month(),
+                d.dayOfMonth());
+}
+
 RatesMainWindow::~RatesMainWindow() {}
 
 void RatesMainWindow::setupMenu() {
@@ -94,6 +102,14 @@ void RatesMainWindow::setupMenu() {
 
 void RatesMainWindow::setVolTableWidget(QTableWidget *volTable) {
     volTable_ = volTable;
+}
+
+void RatesMainWindow::setOisTableWidget(QTableWidget *oisTable) {
+    oisCurveTable_ = oisTable;
+}
+
+void RatesMainWindow::setForwardTableWidget(QTableWidget *forwardTable) {
+    forwardCurveTable_ = forwardTable;
 }
 
 std::vector<std::string> RatesMainWindow::getRowIndex() {
@@ -221,6 +237,53 @@ void RatesMainWindow::openBbg() {
     std::cout << "Read file done." << std::endl;
     // notify the vol table value changes
     updateVolTable();
+
+    std::cout << "Vol table updated." << std::endl;
+
+    // prepare interest rate curve
+    std::vector<Period> oisTenors;
+    std::vector<double> oisRates;
+    Period depositTenor;
+    double depositRate;
+    std::vector<Date> futuresMaturities;
+    std::vector<double> futuresPrices;
+    std::vector<Period> swapTenors;
+    std::vector<double> swapQuotes;
+
+    getOisQuoteData(oisTenors, oisRates);
+    getForwardQuoteData(depositTenor, depositRate,
+                futuresMaturities, futuresPrices,
+                swapTenors, swapQuotes);
+
+    std::string today = modelInfo_->pricingDate().toString(QString::fromUtf8("yyyy/MM/dd")).toUtf8().constData();
+    Date todaysDate = DateParser::parseFormatted(today, "%Y/%m/%d");
+    Calendar calendar = TARGET();
+    int settlementDays  = 2;
+    Date settlementDate = calendar.advance(todaysDate, settlementDays,
+                Days, ModifiedFollowing);
+    Settings::instance().evaluationDate() = todaysDate;
+
+    std::cout << todaysDate << " " << settlementDate << std::endl;
+
+    DayCounter fixedLegDayCounter = Thirty360();
+    RelinkableHandle<YieldTermStructure> discountTermStructure;
+    RelinkableHandle<YieldTermStructure> forecastTermStructure; 
+    ext::shared_ptr<IborIndex> liborIndex( new USDLibor( Period(3, Months), forecastTermStructure ) );
+
+    bootstrapIrTermStructure(oisTenors, oisRates,
+            depositTenor, depositRate,
+            futuresMaturities, futuresPrices,
+            swapTenors, swapQuotes,
+            settlementDays, calendar, settlementDate,
+            fixedLegDayCounter, liborIndex,
+            true, true, discountTermStructure, forecastTermStructure);
+    std::cout << "IR term structure bootstrapped." << std::endl;
+
+    updateOisTable(settlementDate, calendar,
+                oisTenors, discountTermStructure);
+    updateForwardTable(settlementDate, calendar,
+                depositTenor, futuresMaturities, swapTenors,
+                forecastTermStructure);
 }
 
 void RatesMainWindow::updateVolTable() {
@@ -232,7 +295,6 @@ void RatesMainWindow::updateVolTable() {
     volTable_->setColumnCount(volColIndex_.size());
 
     // update new contents
-
     for (unsigned long i = 0; i < volColIndex_.size(); i++) {
         volTable_->setHorizontalHeaderItem(i,
                 new QTableWidgetItem(
@@ -249,6 +311,105 @@ void RatesMainWindow::updateVolTable() {
             volTable_->setItem(i, j, new QTableWidgetItem(
                         QString::number(vol_[i][j], 'g', 4)));
         }
+    }
+}
+
+void RatesMainWindow::updateOisTable(Date startDate, Calendar calendar,
+        const std::vector<Period> &oisTerms,
+        const RelinkableHandle<YieldTermStructure> &discountTermStructure) {
+
+    // erase old data
+    oisCurveTable_->setRowCount(0);
+    oisCurveTable_->setColumnCount(0);
+
+    oisCurveTable_->setRowCount(oisTerms.size());
+    oisCurveTable_->setColumnCount(2);
+
+    // update new contents
+    oisCurveTable_->setHorizontalHeaderItem(0,
+            new QTableWidgetItem(
+                    QString::fromUtf8("日期")));
+    oisCurveTable_->setHorizontalHeaderItem(1,
+            new QTableWidgetItem(
+                    QString::fromUtf8("贴现率")));
+
+    char buffer[64] = {'\0'};
+    for (unsigned int i = 0; i < oisTerms.size(); i++) {
+        double disc = 1.0;
+        Date d = startDate;
+        if (i > 0) {
+            d = calendar.advance(startDate, oisTerms[i],
+                            ModifiedFollowing);
+            disc = discountTermStructure->discount(d);
+        }
+        date2string(buffer, d);
+        oisCurveTable_->setItem(i, 0, new QTableWidgetItem(
+                    QString::fromUtf8(buffer)));
+        std::cout << i << " " << disc << std::endl;
+        oisCurveTable_->setItem(i, 1, new QTableWidgetItem(
+                    QString::number(disc, 'g', 4)));
+    }
+}
+
+void RatesMainWindow::updateForwardTable(Date startDate,
+            Calendar calendar, Period depositTenor,
+            const std::vector<Date> &futuresMaturities,
+            const std::vector<Period> &swapTenors,
+            const RelinkableHandle<YieldTermStructure> &forecastTermStructure) {
+    // erase old data
+    forwardCurveTable_->setRowCount(0);
+    forwardCurveTable_->setColumnCount(0);
+
+    unsigned int futuresLength = futuresMaturities.size();
+    unsigned int swapLength = swapTenors.size();
+    forwardCurveTable_->setRowCount(2 + futuresLength + swapLength);
+    forwardCurveTable_->setColumnCount(2);
+
+    // update new contents
+    forwardCurveTable_->setHorizontalHeaderItem(0,
+            new QTableWidgetItem(
+                    QString::fromUtf8("日期")));
+    forwardCurveTable_->setHorizontalHeaderItem(1,
+            new QTableWidgetItem(
+                    QString::fromUtf8("贴现率")));
+
+    char buffer[64] = {'\0'};
+    // start date discount rate
+    date2string(buffer, startDate);
+    forwardCurveTable_->setItem(0, 0, new QTableWidgetItem(
+                    QString::fromUtf8(buffer)));
+    forwardCurveTable_->setItem(0, 1, new QTableWidgetItem(
+                QString::number(1.0, 'g', 4)));
+
+    // deposit discount rate
+    Date d = calendar.advance(startDate, depositTenor,
+                    ModifiedFollowing);
+    double disc = forecastTermStructure->discount(d);
+    date2string(buffer, d);
+    forwardCurveTable_->setItem(1, 0, new QTableWidgetItem(
+                    QString::fromUtf8(buffer)));
+    forwardCurveTable_->setItem(1, 1, new QTableWidgetItem(
+                QString::number(disc, 'g', 4)));
+    // futures discount rate
+    std::cout << futuresLength << std::endl;
+    for (unsigned int i = 0; i < futuresLength; i++) {
+        date2string(buffer, futuresMaturities[i]);
+        forwardCurveTable_->setItem(i + 2, 0, new QTableWidgetItem(
+                    QString::fromUtf8(buffer)));
+        disc = forecastTermStructure->discount(futuresMaturities[i]);
+        forwardCurveTable_->setItem(i + 2, 1, new QTableWidgetItem(
+                    QString::number(disc, 'g', 4)));
+    }
+    // swap discount rate
+    for (unsigned int i = 0; i < swapLength; i++) {
+        d = calendar.advance(startDate, swapTenors[i],
+                    ModifiedFollowing);
+        date2string(buffer, d);
+        forwardCurveTable_->setItem(i + 2 + futuresLength, 0,
+                new QTableWidgetItem(QString::fromUtf8(buffer)));
+        disc = forecastTermStructure->discount(d);
+        forwardCurveTable_->setItem(i + 2 + futuresLength, 1,
+                new QTableWidgetItem(QString::number(disc, 'g', 4)));
     }
 }
 

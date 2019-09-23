@@ -110,6 +110,21 @@ QTableWidget *buildMarketPanel(QWidget *parent) {
     return table;
 }
 
+QTableWidget *buildIrCurvePanel(QWidget *parent) {
+    QTableWidget *table = new QTableWidget(parent);
+    table->setRowCount(5);
+    table->setColumnCount(2);
+
+    // fill-in dummy numbers
+    for (int i=0; i < 5; i++) {
+        for (int j=0; j < 2; j++) {
+            table->setItem(i, j, new QTableWidgetItem());
+        }
+    }
+
+    return table;
+}
+
 int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
 
@@ -124,13 +139,19 @@ int main(int argc, char *argv[]) {
     QTabWidget *tabs = new QTabWidget(centralWidget);
 
     QWidget *pricingPanel = buildPricingPanel(tabs, window);
-    QTableWidget *marketPanel  = buildMarketPanel(tabs);
+    QTableWidget *marketPanel = buildMarketPanel(tabs);
+    QTableWidget *oisPanel = buildIrCurvePanel(tabs);
+    QTableWidget *forwardPanel = buildIrCurvePanel(tabs);
 
     tabs->setFixedSize(WINDOW_WIDTH, WINDOW_HEIGHT);
     tabs->addTab(pricingPanel, "Pricing");
     tabs->addTab(marketPanel,  "Market Volatility");
+    tabs->addTab(oisPanel, "OIS Curve");
+    tabs->addTab(forwardPanel, "Forward Curve");
 
     window->setVolTableWidget(marketPanel);
+    window->setOisTableWidget(oisPanel);
+    window->setForwardTableWidget(forwardPanel);
     window->setCentralWidget(centralWidget);
     window->show();
 

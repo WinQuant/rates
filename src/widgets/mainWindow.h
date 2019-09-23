@@ -17,8 +17,10 @@
 #include "widgets/optionality.h"
 #include "widgets/modelInfo.h"
 
+#include <ql/handle.hpp>
 #include <ql/time/date.hpp>
 #include <ql/time/period.hpp>
+#include <ql/termstructures/yield/piecewiseyieldcurve.hpp>
 
 using namespace QuantLib;
 
@@ -35,6 +37,8 @@ public:
     void setModelInfoWidget(ModelInfo *modelInfo);
 
     void setVolTableWidget(QTableWidget *volTable);
+    void setOisTableWidget(QTableWidget *oisTable);
+    void setForwardTableWidget(QTableWidget *forwardTable);
 
     std::vector<std::string> getRowIndex();
     std::vector<std::string> getColIndex();
@@ -54,6 +58,14 @@ private slots:
 
 private:
     void updateVolTable();
+    void updateOisTable(Date startDate, Calendar calendar,
+            const std::vector<Period> &oisTerms,
+            const RelinkableHandle<YieldTermStructure> &discountTermStructure);
+    void updateForwardTable(Date startDate, Calendar calendar,
+            Period depositTenor,
+            const std::vector<Date> &futuresMaturities,
+            const std::vector<Period> &swapTenors,
+            const RelinkableHandle<YieldTermStructure> &forecastTermStructure);
 
     std::vector<std::string> volRowIndex_;
     std::vector<std::string> volColIndex_;
@@ -79,6 +91,8 @@ private:
     ModelInfo *modelInfo_;
 
     QTableWidget *volTable_;
+    QTableWidget *oisCurveTable_;
+    QTableWidget *forwardCurveTable_;
 };
 
 #endif
